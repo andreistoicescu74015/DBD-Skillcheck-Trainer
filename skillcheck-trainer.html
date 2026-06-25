@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skill Check Trainer</title>
+<style>
+  :root{
+    --bg:#13110d; --panel:rgba(26,22,17,0.82); --line:rgba(255,255,255,0.09);
+    --txt:#ece6dd; --dim:#9b9286; --accent:#e0805f; --accent2:#d97757;
+    --great:#5fd0a0; --miss:#ff6b6b; --early:#ffd166; --late:#ff9e6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",system-ui,Inter,Arial,sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
+  canvas#dial{position:fixed;inset:0;display:block;background:radial-gradient(circle at 50% 47%,#15140f 0%,#070707 78%)}
+  #hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:13px;pointer-events:none}
+  #gear{position:fixed;top:14px;right:14px;z-index:10;width:44px;height:44px;border-radius:13px;
+    border:1px solid var(--line);background:rgba(26,22,17,0.8);backdrop-filter:blur(8px);color:var(--txt);
+    font-size:20px;cursor:pointer;transition:transform .25s,filter .2s;display:flex;align-items:center;justify-content:center}
+  #gear:hover{filter:brightness(1.25);transform:rotate(35deg)}
+  #menu{position:fixed;top:68px;right:14px;width:336px;max-height:calc(100vh - 84px);overflow-y:auto;z-index:9;
+    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
+    padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.5);
+    transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1);transform-origin:top right}
+  #menu.hidden{opacity:0;transform:scale(.95) translateY(-8px);pointer-events:none}
+  #menu::-webkit-scrollbar{width:8px}#menu::-webkit-scrollbar-thumb{background:#3a342c;border-radius:4px}
+  .title{font-size:16px;font-weight:800}
+  .subtitle{font-size:11px;color:var(--dim);margin-bottom:6px}
+  h2{margin:15px 0 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:1.3px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+  .sw{display:flex;align-items:center;gap:11px;font-size:13px;margin:8px 0;cursor:pointer}
+  .sw input{display:none}
+  .sw .track{position:relative;width:38px;height:22px;border-radius:12px;background:#3a342c;flex:0 0 auto;transition:background .18s}
+  .sw .track::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#cfc8bd;transition:transform .18s,background .18s}
+  .sw input:checked + .track{background:var(--accent)}
+  .sw input:checked + .track::after{transform:translateX(16px);background:#fff}
+  .sw .eff{margin-left:auto;color:var(--dim);font-size:11px;text-align:right}
+  .note{color:var(--dim);font-size:11px;line-height:1.5;margin:5px 0}
+  label.sl{display:block;font-size:12px;color:var(--dim);margin:10px 0 5px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:3px;background:#3a342c;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #14110c}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
+  .val{font-variant-numeric:tabular-nums;font-size:12px;color:var(--txt)} .val .d{color:var(--accent);font-weight:700}
+  .form{font-size:15px;font-weight:700;margin-top:2px}.form b{font-variant-numeric:tabular-nums;color:var(--great)}
+  .row{display:flex;gap:13px;font-size:12px;color:var(--dim);margin-top:7px;flex-wrap:wrap}
+  .row b{color:var(--txt);font-variant-numeric:tabular-nums}
+  #meter{width:100%;height:62px;background:#0d0c09;border:1px solid var(--line);border-radius:10px;display:block;margin-top:8px}
+  .mlbl{display:flex;justify-content:space-between;color:var(--dim);font-size:10px;margin-top:4px}
+  .kb{display:flex;align-items:center;gap:9px;font-size:12px;margin:7px 0}
+  .kb .k{color:var(--dim);min-width:78px}
+  kbd{background:#0e0d09;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:2px 9px;font-size:12px;font-family:inherit;min-width:34px;text-align:center}
+  .kb button{margin-left:auto}
+  .btns{display:flex;gap:8px;margin-top:11px}
+  button.b{flex:1;padding:10px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,0.04);
+    color:var(--txt);font-weight:600;cursor:pointer;font-size:12.5px;transition:transform .12s,filter .15s}
+  button.b.mini{flex:0 0 auto;padding:6px 12px;border-radius:9px;font-size:11.5px}
+  button.b.primary{background:linear-gradient(180deg,var(--accent),var(--accent2));border-color:transparent;color:#231007}
+  button.b:hover{filter:brightness(1.12);transform:translateY(-1px)}
+</style>
+</head>
+<body>
+  <canvas id="dial"></canvas>
+  <div id="hint">Press <kbd id="startname">Enter</kbd> to start · hit on <kbd id="hitname">Space</kbd> · menu ⚙ top-right</div>
+
+  <button id="gear" title="Menu">&#9881;</button>
+  <div id="menu">
+    <div class="title">Skill Check Trainer</div>
+    <div class="subtitle">Train your great-skill-check timing · wiki-calibrated</div>
+
+    <h2>Perks &amp; abilities</h2>
+    <label class="sw"><input type="checkbox" id="c-unnerving" /><span class="track"></span><span>Unnerving Presence</span><span class="eff">good zone −60%</span></label>
+    <label class="sw"><input type="checkbox" id="c-injured" /><span class="track"></span><span>Injured · This Is Not Happening</span><span class="eff">great +30%</span></label>
+    <label class="sw"><input type="checkbox" id="c-hyper" /><span class="track"></span><span>Hyperfocus</span><span class="eff">+4% speed / stack</span></label>
+    <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse spins</span></label>
+    <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
+
+    <h2>Zone position</h2>
+    <div class="note">Where on the dial the zone can appear. Set min = max to fix it in one spot.</div>
+    <label class="sl">Earliest: <span class="val" id="v-posmin"></span></label>
+    <input type="range" id="r-posmin" min="90" max="330" step="5" value="120" />
+    <label class="sl">Latest: <span class="val" id="v-posmax"></span></label>
+    <input type="range" id="r-posmax" min="90" max="330" step="5" value="320" />
+    <label class="sl">Gap between checks: <span class="val" id="v-gap"></span></label>
+    <input type="range" id="r-gap" min="0" max="1200" step="50" value="0" />
+    <label class="sl">Spawn area — Doctor's range (0 = centered): <span class="val" id="v-spawn"></span></label>
+    <input type="range" id="r-spawn" min="0" max="100" step="5" value="50" />
+
+    <h2>Baseline skill check <span style="text-transform:none;letter-spacing:0;color:var(--dim)">(manual)</span></h2>
+    <div class="note">White zone = <b>Great</b> (front) + <b>Good</b> (the lenient part after it). This Is Not Happening grows only Great; Unnerving shrinks only Good.</div>
+    <label class="sl">Rotation time: <span class="val" id="v-rev"></span></label>
+    <input type="range" id="r-rev" min="500" max="2000" step="10" value="1100" />
+    <label class="sl">Great zone (front): <span class="val" id="v-great"></span></label>
+    <input type="range" id="r-great" min="1" max="12" step="0.5" value="3" />
+    <label class="sl">Good zone (after great): <span class="val" id="v-good"></span></label>
+    <input type="range" id="r-good" min="1" max="30" step="0.5" value="10" />
+
+    <h2>Appearance</h2>
+    <label class="sl">Dial size: <span class="val" id="v-size"></span></label>
+    <input type="range" id="r-size" min="40" max="260" step="2" value="80" />
+    <label class="sl">Block width: <span class="val" id="v-block"></span></label>
+    <input type="range" id="r-block" min="2" max="40" step="1" value="7" />
+    <label class="sl">Red line thickness: <span class="val" id="v-needle"></span></label>
+    <input type="range" id="r-needle" min="1" max="30" step="1" value="6" />
+    <label class="sw"><input type="checkbox" id="c-contrast" /><span class="track"></span><span>High-contrast great</span><span class="eff">green vs white</span></label>
+    <label class="sw"><input type="checkbox" id="c-showms" checked /><span class="track"></span><span>Show ms in dial center</span><span class="eff">±ms vs great</span></label>
+
+    <h2>Performance</h2>
+    <div class="form">Recent form: <b id="s-rform">—</b></div>
+    <div class="row"><span>checks <b id="s-att">0</b></span><span>great <b id="s-great" style="color:var(--great)">0</b></span><span>good <b id="s-good">0</b></span><span>miss <b id="s-miss" style="color:var(--miss)">0</b></span><span>streak <b id="s-streak">0</b></span></div>
+    <canvas id="meter" width="304" height="62"></canvas>
+    <div class="mlbl"><span>&#9664; early</span><span>recent = taller / brighter</span><span>late &#9654;</span></div>
+
+    <h2>Sound</h2>
+    <label class="sw"><input type="checkbox" id="c-audio" checked /><span class="track"></span><span>Audio</span><span class="eff">synthesized</span></label>
+
+    <h2>Controls</h2>
+    <div class="kb"><span class="k">Start / Stop</span><kbd id="startname2">Enter</kbd><button class="b mini" id="btn-startkey">Rebind</button></div>
+    <div class="kb"><span class="k">Hit skill check</span><kbd id="hitname2">Space</kbd><button class="b mini" id="btn-hitkey">Rebind</button></div>
+    <div class="btns"><button class="b primary" id="btn-start">Start</button><button class="b" id="btn-fs">Fullscreen</button></div>
+    <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-default">Reset settings</button></div>
+    <div class="btns"><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
+    <input type="file" id="imp" accept="application/json" style="display:none" />
+    <div class="note">Profile auto-saves · Export / Import to move it · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>.</div>
+  </div>
+
+<script>
+(() => {
+  const TAU=Math.PI*2, D2R=Math.PI/180;
+  const $=id=>document.getElementById(id);
+  const dial=$('dial'), dctx=dial.getContext('2d');
+  const meter=$('meter'), mctx=meter.getContext('2d');
+  const LSKEY='dbd_sc_profile_v10', MAXHYPER=6;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+  const THEMES = {
+    authentic:{ ring:'rgba(223,231,243,0.5)', good:'#eef2f7', great:'#ffffff', glow:'rgba(255,255,255,0.65)', needle:'#ff3b3b' },
+    contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:'#5fd0a0', glow:'rgba(95,208,160,0.6)', needle:'#ff4d4d' },
+  };
+  const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:0, dialR:80, posMin:120, posMax:320, spawnArea:0.5,
+    blockPx:7, needlePx:6, unnerving:false, injured:false, hyper:false, doctor:false, lullaby:false, contrast:false, audio:true, showMs:true };
+  const cfg = JSON.parse(JSON.stringify(DEFAULTS));
+  let hitBind={type:'key',code:'Space',name:'Space'}, startBind={type:'key',code:'Enter',name:'Enter'};
+  let rebinding=null, spawnHintUntil=0;
+
+  const st = { phase:'idle', running:false, t0:0, needle:0, zoneStart:200,
+               eff:{revMs:1100,greatDeg:10.8,goodDeg:46.8,greatPct:3,goodPct:10}, ox:0, oy:0, reverse:false, nextAt:0, hyperStacks:0 };
+  const stats = { att:0, great:0, good:0, miss:0, streak:0, best:0, offsets:[] };
+  const recent=[];
+
+  const now=()=>performance.now();
+  const fmt=ms=>(ms>=0?'+':'−')+Math.abs(ms).toFixed(0)+'ms';
+  const avg=a=>a.reduce((s,x)=>s+x,0)/a.length;
+  const theme=()=>cfg.contrast?THEMES.contrast:THEMES.authentic;
+  const clockOf=d=>{const hr=Math.round(d/30)%12;return (hr===0?12:hr)+" o'clock";};
+
+  // ---------- audio (synthesized; not the game's files) ----------
+  let ac=null,master=null;
+  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.gain.value=0.9;master.connect(ac.destination);} if(ac.state==='suspended')ac.resume(); return ac; }
+  function tone(f,dur,vol,type,when,f2){ const c=actx(),t=c.currentTime+(when||0),o=c.createOscillator(),g=c.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(f,t); if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
+    o.connect(g);g.connect(master);g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.start(t);o.stop(t+dur); }
+  function noise(dur,vol,cut){ const c=actx(),n=Math.floor(c.sampleRate*dur),b=c.createBuffer(1,n,c.sampleRate),d=b.getChannelData(0);
+    for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
+    const s=c.createBufferSource();s.buffer=b;const f=c.createBiquadFilter();f.type='lowpass';f.frequency.value=cut;
+    const g=c.createGain();g.gain.value=vol;s.connect(f);f.connect(g);g.connect(master);s.start(); }
+  const SND={ appear(){if(cfg.audio&&!cfg.lullaby){tone(1300,0.05,0.045,'triangle',0,1750);}},
+    good(){if(cfg.audio)tone(720,0.14,0.10,'sine');},
+    great(){if(cfg.audio){tone(1760,0.10,0.14,'square');tone(2637,0.13,0.09,'sine',0.004);noise(0.03,0.05,6000);}},
+    fail(){if(cfg.audio){noise(0.42,0.6,850);tone(82,0.38,0.26,'sine',0,55);tone(120,0.3,0.16,'sawtooth',0.01);}} };
+
+  // ---------- skill check ----------
+  function computeEff(){
+    let revMs=cfg.revMs;
+    if (cfg.hyper){ revMs/=(1+0.04*st.hyperStacks); }
+    const great = cfg.greatPct * (cfg.injured?1.30:1);   // This Is Not Happening grows ONLY great
+    const good  = cfg.goodPct  * (cfg.unnerving?0.4:1);  // Unnerving −60% shrinks ONLY good
+    const total = great + good;                          // white success zone = great (front) + good (after)
+    return { revMs, greatDeg:great/100*360, goodDeg:total/100*360, greatPct:great, goodPct:good };
+  }
+  function startCheck(){
+    st.eff=computeEff();
+    const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
+    st.zoneStart = lo + Math.random()*(hi-lo);
+    const R=cfg.dialR, bw=Math.max(0,dial.width-2*R)*cfg.spawnArea, bv=Math.max(0,dial.height-2*R)*cfg.spawnArea;
+    if (cfg.doctor){ // Madness: reverse + a random spot WITHIN the Spawn area (centred if area is 0%); the area value is only read, never changed
+      st.ox = dial.width/2 + (Math.random()-0.5)*bw; st.oy = dial.height/2 + (Math.random()-0.5)*bv;
+      st.reverse = Math.random()<0.5;
+    } else {
+      st.ox = dial.width/2; st.oy = dial.height/2; st.reverse = false;
+    }
+    st.t0=now(); st.needle=0; st.phase='active'; SND.appear();
+  }
+  function classify(ang){ const gs=st.zoneStart,ge=gs+st.eff.greatDeg,we=gs+st.eff.goodDeg;
+    if(ang>=gs&&ang<=ge)return'great'; if(ang>ge&&ang<=we)return'good'; return'miss'; }
+
+  function register(kind, signedMs, pressed){
+    const t=now(); stats.att++;
+    if (kind==='great'){ stats.great++; stats.streak++; stats.best=Math.max(stats.best,stats.streak);
+      if(cfg.hyper)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); SND.great(); }
+    else { if(cfg.hyper)st.hyperStacks=0;
+      if(kind==='good'){ stats.good++; stats.streak=0; SND.good(); } else { stats.miss++; stats.streak=0; SND.fail(); } }
+    if (cfg.hyper) updateEffLabels();
+    if (pressed){ stats.offsets.push(signedMs); recent.push({ms:signedMs,kind}); if(recent.length>60)recent.shift();
+      st.lastMs=signedMs; st.lastKind=kind; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
+    updateStats(); saveProfile();
+    st.phase='resolved'; st.nextAt=t+Math.max(120,cfg.gapMs)+(cfg.gapMs>0?Math.random()*120:0);
+  }
+  function onPress(ts){ if(st.phase!=='active')return; const om=360/st.eff.revMs, ang=(ts-st.t0)*om, ideal=st.zoneStart+st.eff.greatDeg/2;
+    st.needle=ang; register(classify(ang),(ang-ideal)/om,true); }
+
+  // ---------- loop ----------
+  function frame(){
+    requestAnimationFrame(frame);
+    const t=now();
+    if (st.running){
+      if (st.phase==='active'){ st.needle=(t-st.t0)*(360/st.eff.revMs); if(st.needle>st.zoneStart+st.eff.goodDeg+4) register('miss',0,false); }
+      else if (st.phase==='idle') startCheck();
+      else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
+    }
+    render();
+  }
+
+  // ---------- render ----------
+  function render(){
+    const w=dial.width,h=dial.height,R=cfg.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx,R*1.4)),T=theme(),Ri=R-bh/2,Ro=R+bh/2;
+    dctx.clearRect(0,0,w,h);
+    if (st.phase==='active'||st.phase==='resolved'){
+      dctx.save(); if(st.reverse){dctx.translate(cx,cy);dctx.scale(-1,1);dctx.translate(-cx,-cy);}
+      const gs=st.zoneStart,ge=gs+st.eff.greatDeg,we=gs+st.eff.goodDeg;
+      ring(cx,cy,R,T.ring,gs,we);
+      annulus(cx,cy,Ri,Ro,gs,we,T.good,'stroke');
+      annulus(cx,cy,Ri,Ro,gs,ge,T.great,'fill',T.glow);
+      const na=(st.needle-90)*D2R, nW=Math.max(1,cfg.needlePx);
+      const r0=Math.max(0,R-bh*1.25), r1=R+bh*1.25;   // short radial tick centred on the ring
+      dctx.save(); dctx.shadowColor=T.needle; dctx.shadowBlur=8; dctx.beginPath();
+      dctx.moveTo(cx+Math.cos(na)*r0,cy+Math.sin(na)*r0); dctx.lineTo(cx+Math.cos(na)*r1,cy+Math.sin(na)*r1);
+      dctx.lineWidth=nW; dctx.strokeStyle=T.needle; dctx.lineCap='round'; dctx.stroke(); dctx.restore();
+      dctx.restore();
+    } else {
+      ring(st.ox||w/2, st.oy||h/2, R, T.ring, 0, 0);
+      if(!st.running){ dctx.fillStyle='#8b8276'; dctx.font='15px Segoe UI'; dctx.textAlign='center';
+        dctx.fillText('Press '+startBind.name+' to start',(st.ox||w/2),(st.oy||h/2)+R+34); }
+    }
+    if (cfg.showMs && st.msAt){ const el=now()-st.msAt; if(el<650){
+      dctx.save(); dctx.globalAlpha=el<450?1:clamp((650-el)/200,0,1);
+      dctx.fillStyle=st.lastKind==='great'?'#5fd0a0':(st.lastKind==='good'?'#eef2f7':'#ff6b6b');
+      dctx.font='600 '+Math.max(13,Math.round(cfg.dialR*0.34))+'px Segoe UI'; dctx.textAlign='center'; dctx.textBaseline='middle';
+      dctx.fillText(fmt(st.lastMs),st.msX,st.msY); dctx.textBaseline='alphabetic'; dctx.restore(); }
+    }
+    if (now()<spawnHintUntil) drawSpawnArea();
+  }
+  function drawSpawnArea(){
+    const R=cfg.dialR, bw=Math.max(0,dial.width-2*R)*cfg.spawnArea, bv=Math.max(0,dial.height-2*R)*cfg.spawnArea;
+    const cx=dial.width/2, cy=dial.height/2, x=cx-bw/2-R, y=cy-bv/2-R, w=bw+2*R, h=bv+2*R;
+    dctx.save(); dctx.globalAlpha=clamp((spawnHintUntil-now())/400,0,1);
+    dctx.fillStyle='rgba(224,128,95,0.08)'; dctx.fillRect(x,y,w,h);
+    dctx.setLineDash([10,7]); dctx.lineWidth=2; dctx.strokeStyle='#e0805f'; dctx.strokeRect(x,y,w,h); dctx.setLineDash([]);
+    dctx.strokeStyle='rgba(224,128,95,0.75)'; dctx.lineWidth=1.5; dctx.beginPath();
+    dctx.moveTo(cx-9,cy); dctx.lineTo(cx+9,cy); dctx.moveTo(cx,cy-9); dctx.lineTo(cx,cy+9); dctx.stroke();
+    dctx.fillStyle='#e0805f'; dctx.font='12px Segoe UI'; dctx.textAlign='center';
+    dctx.fillText('spawn area', cx, y>20?y-8:y+18);
+    dctx.restore();
+  }
+  function ring(cx,cy,R,color,gs,we){ dctx.save(); dctx.lineWidth=2; dctx.strokeStyle=color;
+    if (we>gs){ const s=(we-90)*D2R,e=(gs+360-90)*D2R; dctx.beginPath(); dctx.arc(cx,cy,R,s,e,false); dctx.stroke(); }
+    else { dctx.beginPath(); dctx.arc(cx,cy,R,0,TAU); dctx.stroke(); } dctx.restore(); }
+  function annulus(cx,cy,Ri,Ro,a,b,color,mode,glow){ const a1=(a-90)*D2R,b1=(b-90)*D2R; dctx.save(); if(glow){dctx.shadowColor=glow;dctx.shadowBlur=12;}
+    dctx.beginPath(); dctx.arc(cx,cy,Ro,a1,b1,false); dctx.arc(cx,cy,Ri,b1,a1,true); dctx.closePath();
+    if (mode==='stroke'){ dctx.strokeStyle=color; dctx.lineWidth=2; dctx.stroke(); } else { dctx.fillStyle=color; dctx.fill(); } dctx.restore(); }
+
+  // ---------- stats / meter ----------
+  function weighted(){ let ws=0,wg=0,we=0; recent.forEach((r,i)=>{const w=i+1;ws+=w;if(r.kind==='great')wg+=w;we+=w*Math.abs(r.ms);});
+    return ws?{great:wg/ws*100,err:we/ws}:null; }
+  function drawMeter(){
+    const w=meter.width,h=meter.height,mid=w/2,span=150,n=recent.length;
+    mctx.clearRect(0,0,w,h); mctx.strokeStyle='#211d16'; mctx.lineWidth=1;
+    for(let ms=-100;ms<=100;ms+=50){const x=mid+(ms/span)*(w/2);mctx.beginPath();mctx.moveTo(x,0);mctx.lineTo(x,h);mctx.stroke();}
+    mctx.strokeStyle='#5fd0a0'; mctx.lineWidth=2; mctx.beginPath();mctx.moveTo(mid,0);mctx.lineTo(mid,h);mctx.stroke();
+    recent.forEach((r,i)=>{ const wgt=(i+1)/n, len=h*0.2+h*0.64*wgt, y0=(h-len)/2, x=mid+(clamp(r.ms,-span,span)/span)*(w/2);
+      mctx.globalAlpha=0.12+0.88*wgt; mctx.strokeStyle=r.kind==='great'?'#5fd0a0':(r.kind==='good'?'#9aa7b6':'#ff6b6b');
+      mctx.lineWidth=2.4; mctx.beginPath();mctx.moveTo(x,y0);mctx.lineTo(x,y0+len);mctx.stroke(); });
+    mctx.globalAlpha=1;
+    if (recent.length){ const m=avg(recent.map(r=>r.ms)),x=mid+(clamp(m,-span,span)/span)*(w/2);
+      mctx.fillStyle='#e0805f'; mctx.beginPath();mctx.moveTo(x,1);mctx.lineTo(x-5,9);mctx.lineTo(x+5,9);mctx.closePath();mctx.fill(); }
+  }
+  function updateStats(){
+    const wt=weighted();
+    $('s-rform').textContent=wt?`${Math.round(wt.great)}% great · ±${Math.round(wt.err)}ms`:'—';
+    $('s-att').textContent=stats.att; $('s-great').textContent=stats.great; $('s-good').textContent=stats.good;
+    $('s-miss').textContent=stats.miss; $('s-streak').textContent=stats.best;
+    drawMeter();
+  }
+  function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); stats.offsets.length=0; recent.length=0; st.hyperStacks=0; updateStats(); }
+
+  // ---------- effective-value labels (show how perks modify baseline) ----------
+  function effSpan(base,eff,unit){ return Math.abs(eff-base)>(unit==='ms'?1:0.05) ? `${base}${unit} <span class="d">→ ${unit==='ms'?Math.round(eff):eff.toFixed(1)}${unit}</span>` : `${base}${unit}`; }
+  function updateEffLabels(){ const e=computeEff();
+    $('v-rev').innerHTML=effSpan(cfg.revMs,e.revMs,'ms');
+    $('v-great').innerHTML=effSpan(cfg.greatPct,e.greatPct,'%');
+    $('v-good').innerHTML=effSpan(cfg.goodPct,e.goodPct,'%'); }
+
+  // ---------- profile ----------
+  const BOOLS=['unnerving','injured','hyper','doctor','lullaby','contrast','audio','showMs'];
+  const NUMS=['revMs','greatPct','goodPct','gapMs','dialR','posMin','posMax','spawnArea','blockPx','needlePx'];
+  function settingsObj(){ const o={hitBind:{...hitBind},startBind:{...startBind}}; NUMS.forEach(k=>o[k]=cfg[k]); BOOLS.forEach(k=>o[k]=cfg[k]); return o; }
+  function saveProfile(){ try{ localStorage.setItem(LSKEY,JSON.stringify({v:10,settings:settingsObj()})); }catch(e){} }
+  function applyProfile(p){ if(!p)return; const s=p.settings; if(s){
+      NUMS.forEach(k=>{if(typeof s[k]==='number')cfg[k]=s[k];}); BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
+      if(s.hitBind&&s.hitBind.type)hitBind={...s.hitBind}; if(s.startBind&&s.startBind.type)startBind={...s.startBind}; }
+    syncUI(); updateStats(); }
+  function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
+    syncUI(); saveProfile(); }
+
+  // ---------- UI sync ----------
+  function syncSliders(){
+    $('r-rev').value=cfg.revMs; $('r-great').value=cfg.greatPct; $('r-good').value=cfg.goodPct; updateEffLabels();
+    $('r-gap').value=cfg.gapMs; $('v-gap').textContent=(cfg.gapMs===0?'continuous':cfg.gapMs+'ms');
+    $('r-spawn').value=cfg.spawnArea*100; $('v-spawn').textContent=Math.round(cfg.spawnArea*100)+'%';
+    $('r-size').value=cfg.dialR; $('v-size').textContent=cfg.dialR+'px';
+    $('r-posmin').value=cfg.posMin; $('v-posmin').textContent=cfg.posMin+'° ('+clockOf(cfg.posMin)+')';
+    $('r-posmax').value=cfg.posMax; $('v-posmax').textContent=cfg.posMax+'° ('+clockOf(cfg.posMax)+')';
+    $('r-block').value=cfg.blockPx; $('v-block').textContent=cfg.blockPx+'px';
+    $('r-needle').value=cfg.needlePx; $('v-needle').textContent=cfg.needlePx+'px';
+  }
+  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-doctor':'doctor','c-lullaby':'lullaby','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs' };
+  function syncBinds(){ $('hitname').textContent=hitBind.name;$('hitname2').textContent=hitBind.name;$('startname').textContent=startBind.name;$('startname2').textContent=startBind.name; }
+  function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders(); }
+
+  // ---------- controls ----------
+  for(const id in CB)$(id).addEventListener('change',e=>{ cfg[CB[id]]=e.target.checked;
+    if(CB[id]==='hyper')st.hyperStacks=0; updateEffLabels(); saveProfile(); });
+  function slider(id,key,fmtFn){ $(id).addEventListener('input',e=>{ cfg[key]=+e.target.value; fmtFn(); saveProfile(); }); }
+  slider('r-rev','revMs',updateEffLabels);
+  slider('r-great','greatPct',updateEffLabels);
+  slider('r-good','goodPct',updateEffLabels);
+  slider('r-gap','gapMs',()=>$('v-gap').textContent=(cfg.gapMs===0?'continuous':cfg.gapMs+'ms'));
+  const posLbl=(id,v)=>$(id).textContent=v+'° ('+clockOf(v)+')';
+  $('r-posmin').addEventListener('input',e=>{ cfg.posMin=+e.target.value;
+    if(cfg.posMin>cfg.posMax){ cfg.posMax=cfg.posMin; $('r-posmax').value=cfg.posMax; posLbl('v-posmax',cfg.posMax); }
+    posLbl('v-posmin',cfg.posMin); saveProfile(); });
+  $('r-posmax').addEventListener('input',e=>{ cfg.posMax=+e.target.value;
+    if(cfg.posMax<cfg.posMin){ cfg.posMin=cfg.posMax; $('r-posmin').value=cfg.posMin; posLbl('v-posmin',cfg.posMin); }
+    posLbl('v-posmax',cfg.posMax); saveProfile(); });
+  slider('r-size','dialR',()=>$('v-size').textContent=cfg.dialR+'px');
+  slider('r-block','blockPx',()=>$('v-block').textContent=cfg.blockPx+'px');
+  slider('r-needle','needlePx',()=>$('v-needle').textContent=cfg.needlePx+'px');
+  $('r-spawn').addEventListener('input',e=>{ cfg.spawnArea=+e.target.value/100; $('v-spawn').textContent=Math.round(cfg.spawnArea*100)+'%'; spawnHintUntil=now()+1600; saveProfile(); });
+
+  $('gear').addEventListener('click',()=>$('menu').classList.toggle('hidden'));
+  function toggleRun(){ try{actx();}catch(e){}
+    st.running=!st.running; $('btn-start').textContent=st.running?'Stop':'Start'; $('btn-start').classList.toggle('primary',!st.running);
+    if(st.running){ st.phase='idle'; st.hyperStacks=0; updateStats(); saveProfile(); } }
+  $('btn-start').addEventListener('click',toggleRun);
+  $('btn-reset').addEventListener('click',resetSession);
+  $('btn-default').addEventListener('click',resetDefaults);
+  $('btn-hitkey').addEventListener('click',()=>{rebinding='hit';$('btn-hitkey').textContent='Press…';});
+  $('btn-startkey').addEventListener('click',()=>{rebinding='start';$('btn-startkey').textContent='Press…';});
+
+  function fit(){ dial.width=window.innerWidth; dial.height=window.innerHeight; if(st.phase!=='active'){ st.ox=dial.width/2; st.oy=dial.height/2; } }
+  window.addEventListener('resize',fit);
+  $('btn-fs').addEventListener('click',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
+  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:10,settings:settingsObj()},null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
+  $('btn-import').addEventListener('click',()=>$('imp').click());
+  $('imp').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+    r.onload=()=>{ try{applyProfile(JSON.parse(r.result));saveProfile();}catch(err){alert('Invalid profile file');} }; r.readAsText(f); e.target.value=''; });
+
+  // ---------- input ----------
+  const MOUSENAMES={0:'Mouse L',1:'Mouse M',2:'Mouse R',3:'M4',4:'M5'};
+  const overUI=e=>/INPUT|SELECT|BUTTON|TEXTAREA|OPTION|LABEL/.test(e.target.tagName||'')||$('menu').contains(e.target);
+  function setBind(target,b){ if(target==='hit')hitBind=b; else startBind=b; $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; rebinding=null; syncBinds(); saveProfile(); }
+  const keyName=e=>e.code==='Space'?'Space':(e.key.length===1?e.key.toUpperCase():e.code.replace('Key',''));
+  const matchKey=(b,e)=>b.type==='key'&&e.code===b.code;
+  const matchMouse=(b,e)=>b.type==='mouse'&&e.button===b.code&&(e.button>=3||!overUI(e));
+  window.addEventListener('keydown',e=>{
+    if(rebinding){ if(e.code==='Escape'){ rebinding=null; $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; }
+      else setBind(rebinding,{type:'key',code:e.code,name:keyName(e)}); e.preventDefault(); return; }
+    if(matchKey(startBind,e)){ e.preventDefault(); if(!e.repeat)toggleRun(); return; }
+    if(matchKey(hitBind,e)){ e.preventDefault(); if(st.running&&!e.repeat)onPress(e.timeStamp); } });
+  window.addEventListener('mousedown',e=>{
+    if(rebinding){ setBind(rebinding,{type:'mouse',code:e.button,name:MOUSENAMES[e.button]||('Mouse'+e.button)}); e.preventDefault(); return; }
+    if(matchMouse(startBind,e)){ e.preventDefault(); toggleRun(); return; }
+    if(matchMouse(hitBind,e)){ e.preventDefault(); if(st.running)onPress(e.timeStamp); } },true);
+  ['mouseup','auxclick'].forEach(ev=>window.addEventListener(ev,e=>{ if(matchMouse(hitBind,e)||matchMouse(startBind,e))e.preventDefault(); },true));
+  window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
+
+  // keep focus off controls so Space/Enter never re-trigger a clicked widget
+  document.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>b.blur()));
+  document.querySelectorAll('.sw input').forEach(el=>el.addEventListener('change',()=>el.blur()));
+
+  // ---------- boot ----------
+  fit();
+  try{ const saved=localStorage.getItem(LSKEY); if(saved)applyProfile(JSON.parse(saved)); }catch(e){}
+  syncUI(); updateStats(); st.ox=dial.width/2; st.oy=dial.height/2;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
