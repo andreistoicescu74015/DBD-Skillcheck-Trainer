@@ -4,16 +4,16 @@ A lightweight, browser-based trainer for the **skill check** timing minigame fro
 
 Everything lives in a **single self-contained HTML file**: no install, no build step, no dependencies, no network. Open it in a browser and start training. Your settings and stats save automatically.
 
+**▶ Play it now: [andreistoicescu74015.github.io/DBD-Skillcheck-Trainer](https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/)**
+
 > **Disclaimer** — This is an unofficial, fan-made practice tool. It is **not** affiliated with, endorsed by, or connected to Behaviour Interactive or *Dead by Daylight*. All sounds are **synthesized in the browser** (Web Audio API) — they are **not** the game's audio files. Zone sizes and timings are *calibrated approximations* based on community/wiki values, meant for building muscle memory rather than being a frame-accurate simulation.
 
 ## Quick start
 
-1. Open `skillcheck-trainer.html` in any modern browser (Chrome, Edge, Firefox).
+1. Open the [live demo](https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/), or download `index.html` and open it in any modern browser (Chrome, Edge, Firefox).
 2. Press **Enter** to start.
 3. Press **Space** when the red line sweeps into the white zone — land it in the small, bright **Great** band at the front of the zone for a perfect hit.
 4. Click the ⚙ button (top-right) to open the menu and tweak perks, zone size/position, appearance, audio, and controls.
-
-> Tip: rename the file to `index.html` and enable GitHub Pages to play it straight from a URL.
 
 ## Controls
 
@@ -71,4 +71,4 @@ Both actions can be rebound to any key **or mouse button**, including **M4 / M5*
 
 ## License
 
-No license chosen yet. Until one is added, all rights are reserved by the author. If you'd like others to reuse it, consider adding an [MIT](https://choosealicense.com/licenses/mit/) license.
+Released under the **MIT License** — see [`LICENSE`](LICENSE) for the full text. © 2026 Andrei Stoicescu.
