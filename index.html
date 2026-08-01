@@ -10,7 +10,7 @@
     --txt:#ece6dd; --dim:#9b9286; --accent:#e0805f; --accent2:#d97757;
     --great:#5fd0a0; --miss:#ff6b6b;
     /* canvas-only colours; the script reads these so the dial and the meter cannot drift from the panel */
-    --zone:#eef2f7; --zone-dim:#9aa7b6; --grid:#211d16; --idle:#8b8276;
+    --zone:#eef2f7; --zone-dim:#9aa7b6; --grid:#211d16; --idle:#8b8276; --warn:#d9a066;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
@@ -44,6 +44,9 @@
   .sw input:checked + .track::after{transform:translateX(16px);background:#fff}
   .sw .eff{margin-left:auto;color:var(--dim);font-size:11px;text-align:right}
   .note{color:var(--dim);font-size:11px;line-height:1.5;margin:5px 0}
+  .warn{display:none;color:var(--warn);font-size:11px;line-height:1.5;margin:10px 0 0;
+    border-left:2px solid var(--warn);padding:1px 0 1px 9px}
+  .warn div+div{margin-top:6px}
   label.sl{display:block;font-size:12px;color:var(--dim);margin:10px 0 5px}
   input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:3px;background:#3a342c;outline:none}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #14110c}
@@ -103,6 +106,7 @@
     <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse + random spawn</span></label>
     <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
     <label class="sw"><input type="checkbox" id="c-merciless" /><span class="track"></span><span>Merciless Storm</span><span class="eff">continuous · no great</span></label>
+    <div class="warn" id="warn"></div>
 
     <h2>Baseline zone position</h2>
     <div class="note">Where on the dial the zone can appear. Set min = max to fix it in one spot.</div>
@@ -520,10 +524,33 @@
     $('r-block').value=cfg.blockPx; $('v-block').textContent=cfg.blockPx+'px';
     $('r-needle').value=cfg.needlePx; $('v-needle').textContent=cfg.needlePx+'px';
     $('r-length').value=cfg.needleLen; $('v-length').textContent=cfg.needleLen+'px';
-    syncPresets(); syncLengths();
+    syncPresets(); syncLengths(); syncWarn();
   }
-  function syncPresets(){ document.querySelectorAll('#presets .chip').forEach(c=>{ const p=PRESETS[c.dataset.p];
-    c.classList.toggle('on', p.revMs===cfg.revMs&&p.greatPct===cfg.greatPct&&p.goodPct===cfg.goodPct); }); }
+  function activePreset(){ for(const k in PRESETS){ const p=PRESETS[k];
+    if(p.revMs===cfg.revMs&&p.greatPct===cfg.greatPct&&p.goodPct===cfg.goodPct) return k; } return null; }
+  function syncPresets(){ const on=activePreset();
+    document.querySelectorAll('#presets .chip').forEach(c=>c.classList.toggle('on', c.dataset.p===on)); }
+
+  // Perk scopes, tier III, from the wiki: Unnerving, This Is Not Happening and Huntress Lullaby
+  // apply to repairing and healing only; Coulrophobia to healing only; Hyperfocus banks tokens
+  // while repairing or healing; Merciless Storm happens on a generator.
+  const PNAME={repair:'Repair',heal:'Heal',ds:'Decisive Strike',oc:'Overcharge',snap:'Snap Out of It'};
+  function conflicts(){
+    const p=activePreset(), e=computeEff(), out=[];
+    const heal=p==='heal', repair=p==='repair'||p==='oc';   // Overcharge fires on a generator, so it counts as repairing
+    if (p){
+      if(cfg.coulro && !heal)                     out.push('Coulrophobia only speeds up healing checks. This baseline is '+PNAME[p]+'.');
+      if(cfg.hyper && !heal && !repair)           out.push('Hyperfocus only banks tokens while repairing or healing, so it never builds on '+PNAME[p]+'.');
+      if(cfg.injured && !heal && !repair)         out.push('This Is Not Happening grows the Great zone on repair and heal checks only.');
+      if(cfg.lullaby && !heal && !repair)         out.push('Hex: Huntress Lullaby silences repair and heal checks only.');
+      if(cfg.merciless && !repair)                out.push('Merciless Storm happens on a generator, not on '+PNAME[p]+'.');
+    }
+    if(cfg.unnerving && e.goodPct<=0)             out.push('Unnerving Presence only shrinks the Good band, and this check has none.');
+    if(cfg.merciless && cfg.hyper)                out.push('Merciless Storm has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    return out;
+  }
+  function syncWarn(){ const c=conflicts(), el=$('warn');
+    el.innerHTML=c.map(t=>'<div>'+t+'</div>').join(''); el.style.display=c.length?'block':'none'; }
   function syncLengths(){ document.querySelectorAll('#lengths .chip').forEach(c=>c.classList.toggle('on', +c.dataset.n===cfg.sessN)); }
   const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
   function syncSpawnEnabled(){ $('r-spawn').disabled=!cfg.doctor; $('l-spawn').classList.toggle('off',!cfg.doctor); }   // the value is only read inside the Madness branches
@@ -536,7 +563,7 @@
   // ---------- controls ----------
   for(const id in CB)$(id).addEventListener('change',e=>{ cfg[CB[id]]=e.target.checked;
     if(CB[id]==='hyper')st.hyperStacks=0; if(CB[id]==='doctor')syncSpawnEnabled();
-    updateEffLabels(); updateStats(); saveProfile(); });
+    updateEffLabels(); syncWarn(); updateStats(); saveProfile(); });
   function slider(id,key,fmtFn){ $(id).addEventListener('input',e=>{ cfg[key]=+e.target.value; fmtFn(); saveProfile(); }); }
   document.querySelectorAll('#presets .chip').forEach(c=>c.addEventListener('click',()=>{
     Object.assign(cfg,PRESETS[c.dataset.p]); syncSliders(); drawMeter(); saveProfile(); }));
@@ -544,7 +571,7 @@
     cfg.sessN=+c.dataset.n; syncLengths(); updateStats(); saveProfile(); }));
   $('sum-close').addEventListener('click',closeSummary);
   $('sum-again').addEventListener('click',()=>{ closeSummary(); toggleRun(); });
-  const effAndMeter=()=>{ updateEffLabels(); syncPresets(); drawMeter(); };   // the histogram scale follows the rotation time and the zone sizes
+  const effAndMeter=()=>{ updateEffLabels(); syncPresets(); syncWarn(); drawMeter(); };   // the histogram scale follows the rotation time and the zone sizes
   slider('r-rev','revMs',effAndMeter);
   slider('r-great','greatPct',effAndMeter);
   slider('r-good','goodPct',effAndMeter);
