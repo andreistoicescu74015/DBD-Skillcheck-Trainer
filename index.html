@@ -136,7 +136,7 @@
     <label class="sl" for="r-size">Dial radius: <span class="val" id="v-size"></span></label>
     <input type="range" id="r-size" min="30" max="260" step="2" value="50" />
     <label class="sl" for="r-block">Zone thickness: <span class="val" id="v-block"></span></label>
-    <input type="range" id="r-block" min="1" max="40" step="1" value="5" />
+    <input type="range" id="r-block" min="1" max="40" step="1" value="7" />
     <label class="sl" for="r-needle">Needle thickness: <span class="val" id="v-needle"></span></label>
     <input type="range" id="r-needle" min="1" max="30" step="1" value="3" />
     <label class="sl" for="r-length">Needle length: <span class="val" id="v-length"></span></label>
@@ -188,7 +188,7 @@
   const $=id=>document.getElementById(id);
   const dial=$('dial'), dctx=dial.getContext('2d');
   const meter=$('meter'), mctx=meter.getContext('2d');
-  const LSKEY='dbd_sc_profile_v10', MAXHYPER=6, GLOW=4, FAILMS=160;   // GLOW: great-zone blur at the default dial size. FAILMS: ring-flash duration on a miss.
+  const LSKEY='dbd_sc_profile_v10', PVER=11, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
   // Colours the canvas shares with the panel live in :root and are read from there, so editing
@@ -203,7 +203,8 @@
     contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:C.great, glow:rgba(C.great,0.6),        needle:'#ff4d4d' },
   };
   const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:50, posMin:120, posMax:320, spawnArea:0.5,
-    blockPx:5, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, doctor:false, lullaby:false, merciless:false, contrast:false, audio:true, showMs:true, showFps:false,
+    // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
+    blockPx:7, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, doctor:false, lullaby:false, merciless:false, contrast:false, audio:true, showMs:true, showFps:false,
     menuOpen:true, openAppearance:false, openControls:false };   // panel and section state, so the layout you left is the one you come back to
   const RANGE = { revMs:[500,2000], greatPct:[0,12], goodPct:[0,30], gapMs:[0,1200], dialR:[30,260], posMin:[90,330],   // mirrors the slider bounds; imported profiles are clamped to these
                   posMax:[90,330], spawnArea:[0,1], blockPx:[1,40], needlePx:[1,30], needleLen:[10,160], vol:[0,1], sessN:[0,500] };
@@ -484,23 +485,25 @@
   function statsObj(){ return { att:stats.att, great:stats.great, good:stats.good, miss:stats.miss, streak:stats.streak, best:stats.best, recent:recent.slice() }; }
   let saveT=0;
   function saveNow(){ if(saveT){clearTimeout(saveT);saveT=0;}
-    try{ localStorage.setItem(LSKEY,JSON.stringify({v:10,settings:settingsObj(),stats:statsObj()})); }catch(e){} }
+    try{ localStorage.setItem(LSKEY,JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()})); }catch(e){} }
   function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
 
   const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':(b.type==='mouse'&&typeof b.code==='number'))&&typeof b.name==='string';
-  function applyProfile(p){ if(!p||typeof p!=='object')return; const s=p.settings; if(s){
+  function applyProfile(p){ if(!p||typeof p!=='object')return; let migrated=false; const s=p.settings; if(s){
       NUMS.forEach(k=>{ const v=s[k]; if(typeof v==='number'&&isFinite(v))cfg[k]=clamp(v,RANGE[k][0],RANGE[k][1]); });   // an out-of-range value used to break the state machine outright
       BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
       if(cfg.posMin>cfg.posMax){ const t=cfg.posMin; cfg.posMin=cfg.posMax; cfg.posMax=t; }
+      if((p.v||0)<11 && typeof s.blockPx==='number'){   // the band outline used to spill 2px past the band, so a pre-v11 value drew blockPx+2
+        cfg.blockPx=clamp(cfg.blockPx+2,RANGE.blockPx[0],RANGE.blockPx[1]); migrated=true; }
       if(okBind(s.hitBind))hitBind={...s.hitBind}; if(okBind(s.startBind))startBind={...s.startBind};
       if(hitBind.type===startBind.type&&hitBind.code===startBind.code) startBind={type:'key',code:'Enter',name:'Enter'}; }
     if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
       recent.length=0;
       if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
         if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?r.ms:null, kind:r.kind}); }); }
-    setVol(); syncUI(); updateStats(); }
+    setVol(); syncUI(); updateStats(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
   function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
     hitBind={type:'key',code:'Space',name:'Space'}; startBind={type:'key',code:'Enter',name:'Enter'};
     setVol(); syncUI(); saveProfile(); }
@@ -586,7 +589,7 @@
       st.ox=clamp(st.ox,R,Math.max(R,VW-R)); st.oy=clamp(st.oy,R,Math.max(R,VH-R)); } }
   window.addEventListener('resize',fit);
   $('btn-fs').addEventListener('click',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:10,settings:settingsObj(),stats:statsObj()},null,2)],{type:'application/json'});
+  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()},null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
   $('btn-import').addEventListener('click',()=>$('imp').click());
   $('imp').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
