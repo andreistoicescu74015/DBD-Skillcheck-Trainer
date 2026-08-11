@@ -194,11 +194,11 @@
     <details class="sec" id="d-appearance">
     <summary>Appearance</summary>
     <label class="sl" for="r-size">Dial radius: <span class="val" id="v-size"></span></label>
-    <input type="range" id="r-size" min="30" max="260" step="2" value="50" />
+    <input type="range" id="r-size" min="30" max="260" step="2" value="60" />
     <label class="sl" for="r-block">Zone thickness: <span class="val" id="v-block"></span></label>
     <input type="range" id="r-block" min="1" max="40" step="1" value="7" />
     <label class="sl" for="r-needle">Needle thickness: <span class="val" id="v-needle"></span></label>
-    <input type="range" id="r-needle" min="1" max="30" step="1" value="3" />
+    <input type="range" id="r-needle" min="1" max="30" step="1" value="4" />
     <label class="sl" for="r-length">Needle length: <span class="val" id="v-length"></span></label>
     <input type="range" id="r-length" min="10" max="160" step="2" value="50" />
     <label class="sw"><input type="checkbox" id="c-contrast" /><span class="track"></span><span>High-contrast great</span><span class="eff">green vs white</span></label>
@@ -241,6 +241,7 @@
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
+  const BASER=50;                         // the dial size the pixel values in Appearance were measured against. Everything is scaled by R/BASER, so this is a fixed reference, not the default size: moving the default must not redraw the dial of everyone who kept theirs.
   const ADAPTUP=1.08, ADAPTDN=0.94, ADAPTRUN=3, ADAPTMIN=0.35, ADAPTMAX=1.5;   // 3-down-1-up staircase; it settles near the window you hold about 4 times in 5
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));   // history rows are built with innerHTML and an imported profile is not ours
@@ -257,9 +258,9 @@
     authentic:{ ring:'rgba(223,231,243,0.5)', good:C.zone,  great:'#ffffff', glow:'rgba(255,255,255,0.65)', needle:'#ff3b3b' },
     contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:C.great, glow:rgba(C.great,0.6),        needle:'#ff4d4d' },
   };
-  const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:50, posMin:120, posMax:320, spawnArea:0.5,
+  const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:60, posMin:120, posMax:320, spawnArea:0.5,
     // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
-    blockPx:7, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
+    blockPx:7, needlePx:4, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
     menuOpen:true, openAppearance:false, openControls:false, openHistory:false };   // panel and section state, so the layout you left is the one you come back to
   const RANGE = { revMs:[500,2000], greatPct:[0,12], goodPct:[0,30], gapMs:[0,1200], dialR:[30,260], posMin:[90,330],   // mirrors the slider bounds; imported profiles are clamped to these
                   posMax:[90,330], spawnArea:[0,1], blockPx:[1,40], needlePx:[1,30], needleLen:[10,160], vol:[0,1], sessN:[0,500] };
@@ -400,7 +401,7 @@
 
   // ---------- render ----------
   function render(){
-    const w=VW,h=VH,R=cfg.dialR,k=R/DEFAULTS.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ro=R+bh/2;   // k = scale relative to the default dial → everything scales with dial size
+    const w=VW,h=VH,R=cfg.dialR,k=R/BASER,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ro=R+bh/2;   // k = scale relative to the reference dial → everything scales with dial size
     dctx.clearRect(0,0,w,h);
     if(cfg.showFps){ dctx.save(); dctx.fillStyle=rgba(C.accent,0.92); dctx.font='12px Segoe UI'; dctx.textAlign='left'; dctx.textBaseline='top'; dctx.fillText(Math.round(st.fps||0)+' fps',12,12); dctx.restore(); }
     if (st.blank){   // both zones at 0%: an empty screen with no explanation reads as a broken app
@@ -448,7 +449,7 @@
       if (cfg.stake) pipRow(cx,below,MAXSTAKE,st.stakeTokens,C.great,k);   // Stake Out tokens, green because each one turns a Good into a Great
     }
     if (st.failAt){ const fl=(FAILMS-(now()-st.failAt))/FAILMS;   // full-alpha red wash on the ring; a timed-out miss has no other visual
-      if (fl>0){ dctx.save(); dctx.globalAlpha=clamp(fl,0,1); dctx.lineWidth=Math.max(1.5,3*R/DEFAULTS.dialR);
+      if (fl>0){ dctx.save(); dctx.globalAlpha=clamp(fl,0,1); dctx.lineWidth=Math.max(1.5,3*R/BASER);
         dctx.strokeStyle=C.miss; dctx.beginPath(); dctx.arc(st.ox,st.oy,R,0,TAU); dctx.stroke(); dctx.restore(); } }
     if (cfg.showMs && st.msAt){ const el=now()-st.msAt; if(el<650){
       dctx.save(); dctx.globalAlpha=el<450?1:clamp((650-el)/200,0,1);
@@ -492,15 +493,15 @@
   function pipRow(cx,y,total,filled,color,k){ const pr=Math.max(2,2.2*k), pg=pr*3.2, x0=cx-(total-1)*pg/2;
     for(let i=0;i<total;i++){ dctx.beginPath(); dctx.arc(x0+i*pg,y,pr,0,TAU);
       dctx.fillStyle = i<filled ? color : 'rgba(255,255,255,0.13)'; dctx.fill(); } }
-  function ring(cx,cy,R,color,gs,we){ dctx.save(); dctx.lineWidth=Math.max(1,2*R/DEFAULTS.dialR); dctx.strokeStyle=color;
+  function ring(cx,cy,R,color,gs,we){ dctx.save(); dctx.lineWidth=Math.max(1,2*R/BASER); dctx.strokeStyle=color;
     if (we>gs){ const s=(we-90)*D2R,e=(gs+360-90)*D2R; dctx.beginPath(); dctx.arc(cx,cy,R,s,e,false); dctx.stroke(); }
     else { dctx.beginPath(); dctx.arc(cx,cy,R,0,TAU); dctx.stroke(); } dctx.restore(); }
   function annulus(cx,cy,Ri,Ro,a,b,color,mode,glow){ const a1=(a-90)*D2R,b1=(b-90)*D2R; dctx.save();
-    if(glow){ dctx.shadowColor=glow; dctx.shadowBlur=GLOW*(Ri+Ro)/(2*DEFAULTS.dialR); }   // scales with the dial, like lineWidth below; a fixed blur read wider than the zone scores
+    if(glow){ dctx.shadowColor=glow; dctx.shadowBlur=GLOW*(Ri+Ro)/(2*BASER); }   // scales with the dial, like lineWidth below; a fixed blur read wider than the zone scores
     if (mode==='stroke'){
       // A stroke sits centred on its path, so drawing the outline on Ri..Ro made the band a
       // full line-width thicker and a hair wider than the zone actually scores. Inset instead.
-      const lw=Math.max(1,Math.min((Ri+Ro)/DEFAULTS.dialR, Ro-Ri)), h=lw/2, da=Math.min(h/((Ri+Ro)/2),(b1-a1)/2);
+      const lw=Math.max(1,Math.min((Ri+Ro)/BASER, Ro-Ri)), h=lw/2, da=Math.min(h/((Ri+Ro)/2),(b1-a1)/2);
       dctx.beginPath(); dctx.arc(cx,cy,Ro-h,a1+da,b1-da,false); dctx.arc(cx,cy,Ri+h,b1-da,a1+da,true); dctx.closePath();
       dctx.strokeStyle=color; dctx.lineWidth=lw; dctx.stroke();
     } else {
