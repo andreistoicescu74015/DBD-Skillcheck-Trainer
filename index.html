@@ -8,12 +8,14 @@
   :root{
     --bg:#13110d; --panel:rgba(26,22,17,0.82); --line:rgba(255,255,255,0.09);
     --txt:#ece6dd; --dim:#9b9286; --accent:#e0805f; --accent2:#d97757;
-    --great:#5fd0a0; --miss:#ff6b6b; --early:#ffd166; --late:#ff9e6b;
+    --great:#5fd0a0; --miss:#ff6b6b;
+    /* canvas-only colours; the script reads these so the dial and the meter cannot drift from the panel */
+    --zone:#eef2f7; --zone-dim:#9aa7b6; --grid:#211d16; --idle:#8b8276; --warn:#d9a066;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
     font-family:"Segoe UI",system-ui,Inter,Arial,sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
-  canvas#dial{position:fixed;inset:0;display:block;background:radial-gradient(circle at 50% 47%,#15140f 0%,#070707 78%)}
+  canvas#dial{position:fixed;inset:0;width:100%;height:100%;display:block;background:radial-gradient(circle at 50% 47%,#15140f 0%,#070707 78%)}
   #hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:13px;pointer-events:none}
   #gear{position:fixed;top:14px;right:14px;z-index:10;width:44px;height:44px;border-radius:13px;
     border:1px solid var(--line);background:rgba(26,22,17,0.8);backdrop-filter:blur(8px);color:var(--txt);
@@ -27,25 +29,44 @@
   #menu::-webkit-scrollbar{width:8px}#menu::-webkit-scrollbar-thumb{background:#3a342c;border-radius:4px}
   .title{font-size:16px;font-weight:800}
   .subtitle{font-size:11px;color:var(--dim);margin-bottom:6px}
-  h2{margin:15px 0 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:1.3px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+  h2,details.sec>summary{margin:15px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1.3px;
+    color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+  details.sec>summary{cursor:pointer;list-style:none;display:block}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::after{content:'+';float:right;font-size:13px;line-height:.9}
+  details.sec[open]>summary::after{content:'−'}
+  details.sec>summary:hover{color:var(--txt)}
   .sw{display:flex;align-items:center;gap:11px;font-size:13px;margin:8px 0;cursor:pointer}
-  .sw input{display:none}
+  .sw input{position:absolute;width:0;height:0;opacity:0}   /* invisible but still focusable, unlike display:none */
   .sw .track{position:relative;width:38px;height:22px;border-radius:12px;background:#3a342c;flex:0 0 auto;transition:background .18s}
   .sw .track::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#cfc8bd;transition:transform .18s,background .18s}
   .sw input:checked + .track{background:var(--accent)}
   .sw input:checked + .track::after{transform:translateX(16px);background:#fff}
   .sw .eff{margin-left:auto;color:var(--dim);font-size:11px;text-align:right}
   .note{color:var(--dim);font-size:11px;line-height:1.5;margin:5px 0}
+  .warn{display:none;color:var(--warn);font-size:11px;line-height:1.5;margin:10px 0 0;
+    border-left:2px solid var(--warn);padding:1px 0 1px 9px}
+  .warn div+div{margin-top:6px}
   label.sl{display:block;font-size:12px;color:var(--dim);margin:10px 0 5px}
   input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:3px;background:#3a342c;outline:none}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #14110c}
   input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
+  input[type=range]:disabled{opacity:.3;cursor:not-allowed}
+  label.sl.off{opacity:.4}
+  .sw input:focus-visible + .track,
+  input[type=range]:focus-visible,
+  button:focus-visible{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
   .val{font-variant-numeric:tabular-nums;font-size:12px;color:var(--txt)} .val .d{color:var(--accent);font-weight:700}
   .form{font-size:15px;font-weight:700;margin-top:2px}.form b{font-variant-numeric:tabular-nums;color:var(--great)}
-  .row{display:flex;gap:13px;font-size:12px;color:var(--dim);margin-top:7px;flex-wrap:wrap}
+  .formsub{font-size:11.5px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums;min-height:14px}
+  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:5px 10px;font-size:12px;color:var(--dim);margin-top:9px}
   .row b{color:var(--txt);font-variant-numeric:tabular-nums}
+  .runbar{margin:12px 0 2px}
+  .rl{font-size:10.5px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);margin:9px 0 0}
+  .rl .prog{float:right;text-transform:none;letter-spacing:0;color:var(--txt);font-variant-numeric:tabular-nums}
+  .tag{align-self:center;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--warn);display:none}
   #meter{width:100%;height:62px;background:#0d0c09;border:1px solid var(--line);border-radius:10px;display:block;margin-top:8px}
-  .mlbl{display:flex;justify-content:space-between;color:var(--dim);font-size:10px;margin-top:4px}
+  .mlbl{display:flex;justify-content:space-between;gap:6px;color:var(--dim);font-size:10.5px;margin-top:4px}
   .kb{display:flex;align-items:center;gap:9px;font-size:12px;margin:7px 0}
   .kb .k{color:var(--dim);min-width:78px}
   kbd{background:#0e0d09;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:2px 9px;font-size:12px;font-family:inherit;min-width:34px;text-align:center}
@@ -56,75 +77,125 @@
   button.b.mini{flex:0 0 auto;padding:6px 12px;border-radius:9px;font-size:11.5px}
   button.b.primary{background:linear-gradient(180deg,var(--accent),var(--accent2));border-color:transparent;color:#231007}
   button.b:hover{filter:brightness(1.12);transform:translateY(-1px)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 3px}
+  .chip{padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,0.04);
+    color:var(--dim);font-family:inherit;font-size:11.5px;cursor:pointer;transition:filter .15s,color .15s}
+  .chip:hover{color:var(--txt);filter:brightness(1.3)}
+  .chip.on{background:var(--accent);border-color:transparent;color:#231007;font-weight:600}
+  #summary{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;width:320px;
+    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
+    padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+  #summary.hidden{display:none}
+  #summary .st{font-size:16px;font-weight:800}
+  #summary .sn{font-size:11px;color:var(--dim);margin-bottom:12px}
+  .sr{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--line)}
+  .sr span:first-child{color:var(--dim)}
+  .sr b{font-variant-numeric:tabular-nums;font-weight:600}
 </style>
 </head>
 <body>
   <canvas id="dial"></canvas>
-  <div id="hint">Press <kbd id="startname">Enter</kbd> to start · hit on <kbd id="hitname">Space</kbd> · menu ⚙ top-right</div>
+  <div id="hint"><kbd id="startname">Enter</kbd> start / stop · <kbd id="hitname">Space</kbd> hit · ⚙ menu top-right</div>
 
   <button id="gear" title="Menu">&#9881;</button>
-  <div id="menu">
+  <div id="menu" class="hidden">
     <div class="title">Skill Check Trainer</div>
     <div class="subtitle">Train your great-skill-check timing · wiki-calibrated</div>
+
+    <div class="runbar">
+      <div class="rl">Action</div>
+      <div class="chips" id="presets">
+        <button class="chip" data-p="repair">Repair</button>
+        <button class="chip" data-p="heal">Heal</button>
+        <button class="chip" data-p="ds">Decisive Strike</button>
+        <button class="chip" data-p="oc">Overcharge</button>
+        <button class="chip" data-p="snap">Snap Out of It</button>
+        <span class="tag" id="p-custom">custom</span>
+      </div>
+      <div class="rl">Session length <span class="prog" id="s-prog"></span></div>
+      <div class="chips" id="lengths">
+        <button class="chip" data-n="0">Free</button>
+        <button class="chip" data-n="20">20</button>
+        <button class="chip" data-n="50">50</button>
+        <button class="chip" data-n="100">100</button>
+      </div>
+      <div class="btns"><button class="b primary" id="btn-start">Start</button><button class="b" id="btn-fs">Fullscreen</button></div>
+    </div>
 
     <h2>Perks &amp; abilities</h2>
     <label class="sw"><input type="checkbox" id="c-unnerving" /><span class="track"></span><span>Unnerving Presence</span><span class="eff">−60% good</span></label>
     <label class="sw"><input type="checkbox" id="c-injured" /><span class="track"></span><span>This Is Not Happening</span><span class="eff">+30% great</span></label>
     <label class="sw"><input type="checkbox" id="c-hyper" /><span class="track"></span><span>Hyperfocus</span><span class="eff">+4% speed/stack · max 6</span></label>
+    <label class="sw"><input type="checkbox" id="c-coulro" /><span class="track"></span><span>Coulrophobia</span><span class="eff">+50% speed · healing</span></label>
     <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse + random spawn</span></label>
     <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
     <label class="sw"><input type="checkbox" id="c-merciless" /><span class="track"></span><span>Merciless Storm</span><span class="eff">continuous · no great</span></label>
+    <div class="warn" id="warn"></div>
 
-    <h2>Baseline zone position</h2>
-    <div class="note">Where on the dial the zone can appear. Set min = max to fix it in one spot.</div>
-    <label class="sl">Earliest: <span class="val" id="v-posmin"></span></label>
-    <input type="range" id="r-posmin" min="90" max="330" step="5" value="120" />
-    <label class="sl">Latest: <span class="val" id="v-posmax"></span></label>
-    <input type="range" id="r-posmax" min="90" max="330" step="5" value="320" />
-    <label class="sl">Gap between checks: <span class="val" id="v-gap"></span></label>
-    <input type="range" id="r-gap" min="0" max="1200" step="50" value="400" />
-    <label class="sl">Spawn area — Doctor's range (0 = centered): <span class="val" id="v-spawn"></span></label>
-    <input type="range" id="r-spawn" min="0" max="100" step="5" value="50" />
+    <h2>Session</h2>
+    <div class="form">Recent form: <b id="s-rform">—</b></div>
+    <div class="formsub" id="s-rsub"></div>
+    <div class="row"><span>checks <b id="s-att">0</b></span><span>great <b id="s-great" style="color:var(--great)">0</b></span><span>good <b id="s-good">0</b></span><span>miss <b id="s-miss" style="color:var(--miss)">0</b></span><span>streak <b id="s-streak">0</b></span><span>best <b id="s-best">0</b></span></div>
+    <canvas id="meter" width="304" height="62"></canvas>
+    <div class="mlbl"><span id="m-lo">&#9664;</span><span>green = great window · miss hangs</span><span id="m-hi">&#9654;</span></div>
 
     <h2>Baseline skill check</h2>
     <div class="note">White zone = <b>Great</b> (front) + <b>Good</b> (the lenient part after it). This Is Not Happening grows only Great; Unnerving shrinks only Good.</div>
-    <label class="sl">Rotation time: <span class="val" id="v-rev"></span></label>
+    <label class="sl" for="r-rev">Rotation time: <span class="val" id="v-rev"></span></label>
     <input type="range" id="r-rev" min="500" max="2000" step="10" value="1100" />
-    <label class="sl">Great zone (front): <span class="val" id="v-great"></span></label>
+    <label class="sl" for="r-great">Great zone (front): <span class="val" id="v-great"></span></label>
     <input type="range" id="r-great" min="0" max="12" step="0.5" value="3" />
-    <label class="sl">Good zone (after great): <span class="val" id="v-good"></span></label>
+    <label class="sl" for="r-good">Good zone (after great): <span class="val" id="v-good"></span></label>
     <input type="range" id="r-good" min="0" max="30" step="0.5" value="10" />
 
-    <h2>Appearance</h2>
-    <label class="sl">Dial size: <span class="val" id="v-size"></span></label>
+    <h2>Baseline zone position</h2>
+    <div class="note">Where on the dial the zone can appear. Set min = max to fix it in one spot.</div>
+    <label class="sl" for="r-posmin">Earliest: <span class="val" id="v-posmin"></span></label>
+    <input type="range" id="r-posmin" min="90" max="330" step="5" value="120" />
+    <label class="sl" for="r-posmax">Latest: <span class="val" id="v-posmax"></span></label>
+    <input type="range" id="r-posmax" min="90" max="330" step="5" value="320" />
+    <label class="sl" for="r-gap">Pause between checks: <span class="val" id="v-gap"></span></label>
+    <input type="range" id="r-gap" min="0" max="1200" step="50" value="400" />
+    <label class="sl" id="l-spawn" for="r-spawn">Spawn area — needs Doctor: <span class="val" id="v-spawn"></span></label>
+    <input type="range" id="r-spawn" min="0" max="100" step="5" value="50" />
+
+    <details class="sec" id="d-appearance">
+    <summary>Appearance</summary>
+    <label class="sl" for="r-size">Dial radius: <span class="val" id="v-size"></span></label>
     <input type="range" id="r-size" min="30" max="260" step="2" value="50" />
-    <label class="sl">Block width: <span class="val" id="v-block"></span></label>
-    <input type="range" id="r-block" min="1" max="40" step="1" value="5" />
-    <label class="sl">Red line thickness: <span class="val" id="v-needle"></span></label>
+    <label class="sl" for="r-block">Zone thickness: <span class="val" id="v-block"></span></label>
+    <input type="range" id="r-block" min="1" max="40" step="1" value="7" />
+    <label class="sl" for="r-needle">Needle thickness: <span class="val" id="v-needle"></span></label>
     <input type="range" id="r-needle" min="1" max="30" step="1" value="3" />
-    <label class="sl">Line length: <span class="val" id="v-length"></span></label>
+    <label class="sl" for="r-length">Needle length: <span class="val" id="v-length"></span></label>
     <input type="range" id="r-length" min="10" max="160" step="2" value="50" />
     <label class="sw"><input type="checkbox" id="c-contrast" /><span class="track"></span><span>High-contrast great</span><span class="eff">green vs white</span></label>
     <label class="sw"><input type="checkbox" id="c-showms" checked /><span class="track"></span><span>Show ms in dial center</span><span class="eff">±ms vs great</span></label>
     <label class="sw"><input type="checkbox" id="c-showfps" /><span class="track"></span><span>Show FPS</span><span class="eff">top-left</span></label>
-
-    <h2>Performance</h2>
-    <div class="form">Recent form: <b id="s-rform">—</b></div>
-    <div class="row"><span>checks <b id="s-att">0</b></span><span>great <b id="s-great" style="color:var(--great)">0</b></span><span>good <b id="s-good">0</b></span><span>miss <b id="s-miss" style="color:var(--miss)">0</b></span><span>streak <b id="s-streak">0</b></span></div>
-    <canvas id="meter" width="304" height="62"></canvas>
-    <div class="mlbl"><span>&#9664; early</span><span>recent = taller / brighter</span><span>late &#9654;</span></div>
+    </details>
 
     <h2>Sound</h2>
     <label class="sw"><input type="checkbox" id="c-audio" checked /><span class="track"></span><span>Audio</span><span class="eff">synthesized</span></label>
+    <label class="sl" for="r-vol">Volume: <span class="val" id="v-vol"></span></label>
+    <input type="range" id="r-vol" min="0" max="100" step="5" value="70" />
+    <div class="note">Release the slider to hear a Great at that level.</div>
 
-    <h2>Controls</h2>
+    <details class="sec" id="d-controls">
+    <summary>Controls &amp; profile</summary>
     <div class="kb"><span class="k">Start / Stop</span><kbd id="startname2">Enter</kbd><button class="b mini" id="btn-startkey">Rebind</button></div>
     <div class="kb"><span class="k">Hit skill check</span><kbd id="hitname2">Space</kbd><button class="b mini" id="btn-hitkey">Rebind</button></div>
-    <div class="btns"><button class="b primary" id="btn-start">Start</button><button class="b" id="btn-fs">Fullscreen</button></div>
-    <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-default">Reset settings</button></div>
-    <div class="btns"><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
+    <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
+    <div class="btns"><button class="b" id="btn-default">Reset settings</button></div>
     <input type="file" id="imp" accept="application/json" style="display:none" />
-    <div class="note">Profile auto-saves · Export / Import to move it · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>.</div>
+    <div class="note">Profile auto-saves · Export / Import to move it · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>. Reset settings wipes your calibration and asks first.</div>
+    </details>
+  </div>
+
+  <div id="summary" class="hidden">
+    <div class="st">Session complete</div>
+    <div class="sn" id="sum-n"></div>
+    <div id="sum-rows"></div>
+    <div class="btns"><button class="b primary" id="sum-again">Again</button><button class="b" id="sum-close">Close</button></div>
   </div>
 
 <script>
@@ -133,33 +204,52 @@
   const $=id=>document.getElementById(id);
   const dial=$('dial'), dctx=dial.getContext('2d');
   const meter=$('meter'), mctx=meter.getContext('2d');
-  const LSKEY='dbd_sc_profile_v10', MAXHYPER=6;
+  const LSKEY='dbd_sc_profile_v10', PVER=11, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
+  // Colours the canvas shares with the panel live in :root and are read from there, so editing
+  // the stylesheet restyles the dial and the meter too. Only dial-specific hues stay literal here.
+  const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const C={ great:cssv('--great'), miss:cssv('--miss'), accent:cssv('--accent'),
+            zone:cssv('--zone'), zoneDim:cssv('--zone-dim'), grid:cssv('--grid'), idle:cssv('--idle') };
+  const rgba=(hex,a)=>{ const n=parseInt(hex.slice(1),16); return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')'; };
+
   const THEMES = {
-    authentic:{ ring:'rgba(223,231,243,0.5)', good:'#eef2f7', great:'#ffffff', glow:'rgba(255,255,255,0.65)', needle:'#ff3b3b' },
-    contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:'#5fd0a0', glow:'rgba(95,208,160,0.6)', needle:'#ff4d4d' },
+    authentic:{ ring:'rgba(223,231,243,0.5)', good:C.zone,  great:'#ffffff', glow:'rgba(255,255,255,0.65)', needle:'#ff3b3b' },
+    contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:C.great, glow:rgba(C.great,0.6),        needle:'#ff4d4d' },
   };
   const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:50, posMin:120, posMax:320, spawnArea:0.5,
-    blockPx:5, needlePx:3, needleLen:50, unnerving:false, injured:false, hyper:false, doctor:false, lullaby:false, merciless:false, contrast:false, audio:true, showMs:true, showFps:false };
+    // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
+    blockPx:7, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, doctor:false, lullaby:false, merciless:false, contrast:false, audio:true, showMs:true, showFps:false,
+    menuOpen:true, openAppearance:false, openControls:false };   // panel and section state, so the layout you left is the one you come back to
+  const RANGE = { revMs:[500,2000], greatPct:[0,12], goodPct:[0,30], gapMs:[0,1200], dialR:[30,260], posMin:[90,330],   // mirrors the slider bounds; imported profiles are clamped to these
+                  posMax:[90,330], spawnArea:[0,1], blockPx:[1,40], needlePx:[1,30], needleLen:[10,160], vol:[0,1], sessN:[0,500] };
+  // Datamined per-action values, tier III. deadbydaylight.wiki.gg/wiki/Skill_Checks
+  const PRESETS = { repair:{revMs:1100,greatPct:3,goodPct:10},   // 13% total success zone
+                    heal:  {revMs:1200,greatPct:3,goodPct:12},   // 15% total
+                    ds:    {revMs:1100,greatPct:7,goodPct:0},    // the rest are great-only, no good band
+                    oc:    {revMs:1000,greatPct:5,goodPct:0},
+                    snap:  {revMs:1200,greatPct:12,goodPct:0} };
   const cfg = JSON.parse(JSON.stringify(DEFAULTS));
   let hitBind={type:'key',code:'Space',name:'Space'}, startBind={type:'key',code:'Enter',name:'Enter'};
   let rebinding=null, spawnHintUntil=0;
+  let VW=0, VH=0, MW=300, MH=62;   // canvas sizes in CSS px; the backing stores are devicePixelRatio times larger
 
   const st = { phase:'idle', running:false, t0:0, needle:0, zoneStart:200,
                eff:{revMs:1100,greatDeg:10.8,goodDeg:46.8,greatPct:3,goodPct:10}, ox:0, oy:0, spin:1, n0:0, nextAt:0, hyperStacks:0 };
   const stats = { att:0, great:0, good:0, miss:0, streak:0, best:0 };
-  const recent=[];
+  const recent=[];   // last 60 checks, for the rolling form readout
+  const sess=[];     // the current run only, for the end-of-session summary
 
   const now=()=>performance.now();
   const fmt=ms=>(ms>=0?'+':'−')+Math.abs(ms).toFixed(0)+'ms';
-  const avg=a=>a.reduce((s,x)=>s+x,0)/a.length;
   const theme=()=>cfg.contrast?THEMES.contrast:THEMES.authentic;
   const clockOf=d=>{const hr=Math.round(d/30)%12;return (hr===0?12:hr)+" o'clock";};
 
   // ---------- audio (synthesized; not the game's files) ----------
   let ac=null,master=null;
-  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.gain.value=0.9;master.connect(ac.destination);} if(ac.state==='suspended')ac.resume(); return ac; }
+  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);} master.gain.value=cfg.vol; if(ac.state==='suspended')ac.resume(); return ac; }
+  function setVol(){ if(master)master.gain.value=cfg.vol; }
   function tone(f,dur,vol,type,when,f2){ const c=actx(),t=c.currentTime+(when||0),o=c.createOscillator(),g=c.createGain();
     o.type=type||'sine';o.frequency.setValueAtTime(f,t); if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
     o.connect(g);g.connect(master);g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.start(t);o.stop(t+dur); }
@@ -174,8 +264,10 @@
 
   // ---------- skill check ----------
   function computeEff(){
-    let revMs=cfg.revMs;
-    if (cfg.hyper){ revMs/=(1+0.04*st.hyperStacks); }
+    let speed=1;                                         // pointer-rotation modifiers are additive on the same stat
+    if (cfg.hyper)  speed += 0.04*st.hyperStacks;        // Hyperfocus +4% per token
+    if (cfg.coulro) speed += 0.50;                       // Coulrophobia +50% (healing checks in game)
+    const revMs = cfg.revMs/speed;
     let great = cfg.greatPct * (cfg.injured?1.30:1);     // This Is Not Happening grows ONLY great
     if (cfg.merciless) great = 0;                        // Merciless Storm: no Great zone at all
     const good  = cfg.goodPct  * (cfg.unnerving?0.4:1);  // Unnerving −60% shrinks ONLY good
@@ -184,16 +276,23 @@
   }
   function startCheck(){
     st.eff=computeEff();
-    const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
-    const R=cfg.dialR, bw=Math.max(0,dial.width-2*R)*cfg.spawnArea, bv=Math.max(0,dial.height-2*R)*cfg.spawnArea;
-    if (cfg.doctor){ // Madness: reverse spin + a random spot WITHIN the Spawn area (centred if area is 0%)
-      st.ox = dial.width/2 + (Math.random()-0.5)*bw; st.oy = dial.height/2 + (Math.random()-0.5)*bv;
-      st.spin = Math.random()<0.5?-1:1;
-    } else {
-      st.ox = dial.width/2; st.oy = dial.height/2; st.spin = 1;
-    }
+    const maxStart=Math.max(0,360-st.eff.goodDeg);   // the zone must finish before the needle's 12 o'clock start, or the drawn tail would score as a miss
+    const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),maxStart), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),maxStart);
+    placeDial(); st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;   // Madness reverses the sweep at random
+    st.hitAng=null;
     st.n0=0; st.needle=0; st.zoneStart = st.spin*(lo + Math.random()*(hi-lo));   // leading edge, ahead of 12 o'clock in the spin direction
     st.t0=now(); st.phase='active'; SND.appear();
+  }
+  const panelRight=()=>cfg.menuOpen?Math.max(2*cfg.dialR,VW-360):VW;   // the open panel owns the right 350px
+  function centreX(){ const R=cfg.dialR;   // centred, unless the window is narrow enough that the panel would cover the dial
+    return Math.max(R+8, Math.min(VW/2, panelRight()-R-8)); }
+  function placeDial(){   // centre, or a random spot in the Spawn area under Madness, never under the open panel
+    const R=cfg.dialR;
+    if(!cfg.doctor){ st.ox=centreX(); st.oy=VH/2; return; }
+    const right=panelRight();
+    const bw=Math.max(0,VW-2*R)*cfg.spawnArea, bv=Math.max(0,VH-2*R)*cfg.spawnArea;
+    st.ox=clamp(VW/2+(Math.random()-0.5)*bw, R, Math.max(R,right-R));
+    st.oy=clamp(VH/2+(Math.random()-0.5)*bv, R, Math.max(R,VH-R));
   }
   function classify(ang){ const d=st.spin*(ang-st.zoneStart);   // progress past the leading edge, in the spin direction
     if(st.eff.greatDeg>0&&d>=0&&d<=st.eff.greatDeg)return'great'; if(d>st.eff.greatDeg&&d<=st.eff.goodDeg)return'good'; return'miss'; }
@@ -205,10 +304,12 @@
     else {
       if(kind==='good'){ stats.good++; if(cfg.merciless){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
         if(cfg.hyper){ if(st.eff.greatDeg<=0)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); else st.hyperStacks=0; } SND.good(); }   // no Great zone → Hyperfocus builds on Good instead
-      else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; SND.fail(); } }
+      else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; st.failAt=now(); SND.fail(); } }   // failAt drives the ring flash, the only visual a timed-out miss gets
     if (cfg.hyper) updateEffLabels();
-    if (pressed){ recent.push({ms:signedMs,kind}); if(recent.length>60)recent.shift();
-      st.lastMs=signedMs; st.lastKind=kind; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
+    recent.push({ms:pressed?signedMs:null, kind}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
+    if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind});   // only a bounded run needs a transcript; Free mode would grow it forever
+    st.hitAng = pressed ? st.needle : null;
+    if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
     updateStats(); saveProfile();
     if (cfg.merciless){   // Merciless Storm: continue from the retained needle angle — on ANY end (success OR fail)
       const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
@@ -216,13 +317,11 @@
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
       st.n0=st.needle; st.t0=now();                                  // keep sweeping from the retained ending angle
       st.zoneStart=st.n0+st.spin*(lo+Math.random()*(hi-lo)); st.phase='active';   // next leading edge, ahead in the (maybe new) spin
-      if (cfg.doctor){                                               // Madness may also relocate the dial
-        const R=cfg.dialR, bw=Math.max(0,dial.width-2*R)*cfg.spawnArea, bv=Math.max(0,dial.height-2*R)*cfg.spawnArea;
-        st.ox=dial.width/2+(Math.random()-0.5)*bw; st.oy=dial.height/2+(Math.random()-0.5)*bv;
-      } else { st.ox=dial.width/2; st.oy=dial.height/2; }   // Madness off mid-chain → recentre the next check
+      placeDial();                                                   // Madness may relocate; off mid-chain it recentres
     } else {
-      st.phase='resolved'; st.nextAt=t+Math.max(120,cfg.gapMs)+(cfg.gapMs>0?Math.random()*120:0);
+      st.phase='resolved'; st.nextAt=t+cfg.gapMs+Math.random()*Math.min(120,cfg.gapMs);   // jitter scales with the pause, so 0 really is 0
     }
+    if (cfg.sessN && sess.length>=cfg.sessN) endSession();
   }
   function onPress(ts){ if(st.phase!=='active')return; const om=360/st.eff.revMs, ang=st.n0+st.spin*(ts-st.t0)*om;
     st.needle=ang; const d=st.spin*(ang-st.zoneStart), idc=(st.eff.greatDeg>0?st.eff.greatDeg:st.eff.goodDeg)/2; register(classify(ang),(d-idc)/om,true); }
@@ -243,12 +342,13 @@
 
   // ---------- render ----------
   function render(){
-    const w=dial.width,h=dial.height,R=cfg.dialR,k=R/DEFAULTS.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ri=R-bh/2,Ro=R+bh/2;   // k = scale relative to the default dial → everything scales with dial size
+    const w=VW,h=VH,R=cfg.dialR,k=R/DEFAULTS.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ri=R-bh/2,Ro=R+bh/2;   // k = scale relative to the default dial → everything scales with dial size
     dctx.clearRect(0,0,w,h);
-    if(cfg.showFps){ dctx.save(); dctx.fillStyle='rgba(224,128,95,0.92)'; dctx.font='12px Segoe UI'; dctx.textAlign='left'; dctx.textBaseline='top'; dctx.fillText(Math.round(st.fps||0)+' fps',12,12); dctx.restore(); }
+    if(cfg.showFps){ dctx.save(); dctx.fillStyle=rgba(C.accent,0.92); dctx.font='12px Segoe UI'; dctx.textAlign='left'; dctx.textBaseline='top'; dctx.fillText(Math.round(st.fps||0)+' fps',12,12); dctx.restore(); }
     if (st.blank) return;   // 0% zone while running → nothing on screen
     if (st.phase==='active'||st.phase==='resolved'){
       dctx.save();
+      if (st.phase==='resolved') dctx.globalAlpha=0.45;   // a check that is over must not read as a live one
       const zs=st.zoneStart, zg=zs+st.spin*st.eff.greatDeg, zw=zs+st.spin*st.eff.goodDeg;
       const gs=Math.min(zs,zw), we=Math.max(zs,zw);
       if(st.eff.goodDeg>0){   // success zone at 0% → draw nothing (fully invisible)
@@ -266,59 +366,138 @@
       dctx.restore();
     } else {
       ring(st.ox||w/2, st.oy||h/2, R, T.ring, 0, 0);
-      if(!st.running){ dctx.fillStyle='#8b8276'; dctx.font='15px Segoe UI'; dctx.textAlign='center';
+      if(!st.running){ dctx.fillStyle=C.idle; dctx.font='15px Segoe UI'; dctx.textAlign='center';
         dctx.fillText('Press '+startBind.name+' to start',(st.ox||w/2),(st.oy||h/2)+R+34); }
     }
+    if (st.phase==='resolved' && st.hitAng!=null && st.eff.goodDeg>0){   // the error as a distance, drawn against the zone you were aiming at
+      const idc=(st.eff.greatDeg>0?st.eff.greatDeg:st.eff.goodDeg)/2, tgt=st.zoneStart+st.spin*idc;
+      const end=tgt+clamp(st.hitAng-tgt,-140,140), rr=Ro+Math.max(4,5*k);
+      dctx.save();
+      dctx.strokeStyle=st.lastKind==='great'?C.great:(st.lastKind==='good'?C.zone:C.miss);
+      dctx.lineWidth=Math.max(1.5,2.5*k); dctx.lineCap='round';
+      dctx.beginPath(); dctx.arc(cx,cy,rr,(Math.min(tgt,end)-90)*D2R,(Math.max(tgt,end)-90)*D2R,false); dctx.stroke();
+      const ha=(end-90)*D2R;   // a tick on the far end, so the arc reads as a length and not as a smear
+      dctx.beginPath(); dctx.moveTo(cx+Math.cos(ha)*(rr-Math.max(3,4*k)),cy+Math.sin(ha)*(rr-Math.max(3,4*k)));
+      dctx.lineTo(cx+Math.cos(ha)*(rr+Math.max(4,5*k)),cy+Math.sin(ha)*(rr+Math.max(4,5*k))); dctx.stroke();
+      dctx.restore();
+    }
+    if (st.running){
+      let below=cy+R+Math.max(18,15*k);
+      const pn=activePreset();   // what you are training and how far in, so the panel can stay shut
+      const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:''].filter(Boolean).join('   ·   ');
+      if (label){ dctx.save(); dctx.fillStyle=C.idle; dctx.font=Math.round(11*Math.min(Math.max(k,1),2))+'px Segoe UI';
+        dctx.textAlign='center'; dctx.fillText(label,cx,below); dctx.restore(); below+=Math.max(15,12*k); }
+      if (cfg.hyper){   // Hyperfocus tokens; they changed the speed by up to 24% with nothing on screen to say so
+        const pr=Math.max(2,2.2*k), pg=pr*3.2, x0=cx-(MAXHYPER-1)*pg/2;
+        for(let i=0;i<MAXHYPER;i++){ dctx.beginPath(); dctx.arc(x0+i*pg,below,pr,0,TAU);
+          dctx.fillStyle = i<st.hyperStacks ? C.accent : 'rgba(255,255,255,0.13)'; dctx.fill(); }
+      }
+    }
+    if (st.failAt){ const fl=(FAILMS-(now()-st.failAt))/FAILMS;   // full-alpha red wash on the ring; a timed-out miss has no other visual
+      if (fl>0){ dctx.save(); dctx.globalAlpha=clamp(fl,0,1); dctx.lineWidth=Math.max(1.5,3*R/DEFAULTS.dialR);
+        dctx.strokeStyle=C.miss; dctx.beginPath(); dctx.arc(st.ox,st.oy,R,0,TAU); dctx.stroke(); dctx.restore(); } }
     if (cfg.showMs && st.msAt){ const el=now()-st.msAt; if(el<650){
       dctx.save(); dctx.globalAlpha=el<450?1:clamp((650-el)/200,0,1);
-      dctx.fillStyle=st.lastKind==='great'?'#5fd0a0':(st.lastKind==='good'?'#eef2f7':'#ff6b6b');
+      dctx.fillStyle=st.lastKind==='great'?C.great:(st.lastKind==='good'?C.zone:C.miss);
       dctx.font='600 '+Math.max(13,Math.round(cfg.dialR*0.34))+'px Segoe UI'; dctx.textAlign='center'; dctx.textBaseline='middle';
       dctx.fillText(fmt(st.lastMs),st.msX,st.msY); dctx.textBaseline='alphabetic'; dctx.restore(); }
     }
     if (now()<spawnHintUntil) drawSpawnArea();
   }
   function drawSpawnArea(){
-    const R=cfg.dialR, bw=Math.max(0,dial.width-2*R)*cfg.spawnArea, bv=Math.max(0,dial.height-2*R)*cfg.spawnArea;
-    const cx=dial.width/2, cy=dial.height/2, x=cx-bw/2-R, y=cy-bv/2-R, w=bw+2*R, h=bv+2*R;
+    const R=cfg.dialR, bw=Math.max(0,VW-2*R)*cfg.spawnArea, bv=Math.max(0,VH-2*R)*cfg.spawnArea;
+    const cx=VW/2, cy=VH/2, x=cx-bw/2-R, y=cy-bv/2-R, w=bw+2*R, h=bv+2*R;
     dctx.save(); dctx.globalAlpha=clamp((spawnHintUntil-now())/400,0,1);
-    dctx.fillStyle='rgba(224,128,95,0.08)'; dctx.fillRect(x,y,w,h);
-    dctx.setLineDash([10,7]); dctx.lineWidth=2; dctx.strokeStyle='#e0805f'; dctx.strokeRect(x,y,w,h); dctx.setLineDash([]);
-    dctx.strokeStyle='rgba(224,128,95,0.75)'; dctx.lineWidth=1.5; dctx.beginPath();
+    dctx.fillStyle=rgba(C.accent,0.08); dctx.fillRect(x,y,w,h);
+    dctx.setLineDash([10,7]); dctx.lineWidth=2; dctx.strokeStyle=C.accent; dctx.strokeRect(x,y,w,h); dctx.setLineDash([]);
+    dctx.strokeStyle=rgba(C.accent,0.75); dctx.lineWidth=1.5; dctx.beginPath();
     dctx.moveTo(cx-9,cy); dctx.lineTo(cx+9,cy); dctx.moveTo(cx,cy-9); dctx.lineTo(cx,cy+9); dctx.stroke();
-    dctx.fillStyle='#e0805f'; dctx.font='12px Segoe UI'; dctx.textAlign='center';
+    dctx.fillStyle=C.accent; dctx.font='12px Segoe UI'; dctx.textAlign='center';
     dctx.fillText('spawn area', cx, y>20?y-8:y+18);
     dctx.restore();
   }
   function ring(cx,cy,R,color,gs,we){ dctx.save(); dctx.lineWidth=Math.max(1,2*R/DEFAULTS.dialR); dctx.strokeStyle=color;
     if (we>gs){ const s=(we-90)*D2R,e=(gs+360-90)*D2R; dctx.beginPath(); dctx.arc(cx,cy,R,s,e,false); dctx.stroke(); }
     else { dctx.beginPath(); dctx.arc(cx,cy,R,0,TAU); dctx.stroke(); } dctx.restore(); }
-  function annulus(cx,cy,Ri,Ro,a,b,color,mode,glow){ const a1=(a-90)*D2R,b1=(b-90)*D2R; dctx.save(); if(glow){dctx.shadowColor=glow;dctx.shadowBlur=12;}
-    dctx.beginPath(); dctx.arc(cx,cy,Ro,a1,b1,false); dctx.arc(cx,cy,Ri,b1,a1,true); dctx.closePath();
-    if (mode==='stroke'){ dctx.strokeStyle=color; dctx.lineWidth=Math.max(1,(Ri+Ro)/DEFAULTS.dialR); dctx.stroke(); } else { dctx.fillStyle=color; dctx.fill(); } dctx.restore(); }
+  function annulus(cx,cy,Ri,Ro,a,b,color,mode,glow){ const a1=(a-90)*D2R,b1=(b-90)*D2R; dctx.save();
+    if(glow){ dctx.shadowColor=glow; dctx.shadowBlur=GLOW*(Ri+Ro)/(2*DEFAULTS.dialR); }   // scales with the dial, like lineWidth below; a fixed blur read wider than the zone scores
+    if (mode==='stroke'){
+      // A stroke sits centred on its path, so drawing the outline on Ri..Ro made the band a
+      // full line-width thicker and a hair wider than the zone actually scores. Inset instead.
+      const lw=Math.max(1,Math.min((Ri+Ro)/DEFAULTS.dialR, Ro-Ri)), h=lw/2, da=Math.min(h/((Ri+Ro)/2),(b1-a1)/2);
+      dctx.beginPath(); dctx.arc(cx,cy,Ro-h,a1+da,b1-da,false); dctx.arc(cx,cy,Ri+h,b1-da,a1+da,true); dctx.closePath();
+      dctx.strokeStyle=color; dctx.lineWidth=lw; dctx.stroke();
+    } else {
+      dctx.beginPath(); dctx.arc(cx,cy,Ro,a1,b1,false); dctx.arc(cx,cy,Ri,b1,a1,true); dctx.closePath();
+      dctx.fillStyle=color; dctx.fill();
+    }
+    dctx.restore(); }
 
   // ---------- stats / meter ----------
-  function weighted(){ let ws=0,wg=0,we=0; recent.forEach((r,i)=>{const w=i+1;ws+=w;if(r.kind==='great')wg+=w;we+=w*Math.abs(r.ms);});
-    return ws?{great:wg/ws*100,err:we/ws}:null; }
+  function meterSpan(){ const e=computeEff(), om=360/e.revMs;   // wide enough to show the window being trained AND the spread you actually produce
+    const win=(e.greatDeg>0?e.greatDeg:e.goodDeg)/2/om;
+    const a=recent.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);
+    const p90=a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0;   // a percentile, so one panic press cannot flatten the chart
+    return Math.max(60, Math.round(Math.max(win*1.25, p90*1.15))); }
+  function weighted(){ const sp=meterSpan(); let ws=0,wg=0,we=0,wb=0,wn=0;
+    recent.forEach((r,i)=>{ const w=i+1; ws+=w; if(r.kind==='great')wg+=w;
+      if(r.ms!=null){ const m=clamp(r.ms,-sp,sp); we+=w*Math.abs(m); wb+=w*m; wn+=w; } });   // clamped: one panic press must not swamp the average
+    return ws?{great:wg/ws*100, err:wn?we/wn:null, bias:wn?wb/wn:null}:null; }
+  function biasTxt(b){ return b==null?'':(Math.abs(b)<3?' · on time':' · '+Math.round(Math.abs(b))+'ms '+(b>0?'late':'early')); }
   function drawMeter(){
-    const w=meter.width,h=meter.height,mid=w/2,span=150,n=recent.length;
-    mctx.clearRect(0,0,w,h); mctx.strokeStyle='#211d16'; mctx.lineWidth=1;
-    for(let ms=-100;ms<=100;ms+=50){const x=mid+(ms/span)*(w/2);mctx.beginPath();mctx.moveTo(x,0);mctx.lineTo(x,h);mctx.stroke();}
-    mctx.strokeStyle='#5fd0a0'; mctx.lineWidth=2; mctx.beginPath();mctx.moveTo(mid,0);mctx.lineTo(mid,h);mctx.stroke();
-    recent.forEach((r,i)=>{ const wgt=(i+1)/n, len=h*0.2+h*0.64*wgt, y0=(h-len)/2, x=mid+(clamp(r.ms,-span,span)/span)*(w/2);
-      mctx.globalAlpha=0.12+0.88*wgt; mctx.strokeStyle=r.kind==='great'?'#5fd0a0':(r.kind==='good'?'#9aa7b6':'#ff6b6b');
+    const w=MW,h=MH,mid=w/2,span=meterSpan(),n=recent.length,e=computeEff(),om=360/e.revMs;
+    mctx.clearRect(0,0,w,h);
+    if (e.greatDeg>0){ const gx=(e.greatDeg/2/om/span)*(w/2);   // the great window itself, so a bar's position tells you whether it landed
+      mctx.fillStyle=rgba(C.great,0.13); mctx.fillRect(mid-gx,0,gx*2,h); }
+    const step=span<=80?25:(span<=250?50:100);
+    mctx.strokeStyle=C.grid; mctx.lineWidth=1;
+    for(let ms=-span+step;ms<span;ms+=step){ if(!ms)continue; const x=mid+(ms/span)*(w/2);
+      mctx.beginPath();mctx.moveTo(x,0);mctx.lineTo(x,h);mctx.stroke(); }
+    mctx.strokeStyle=C.great; mctx.lineWidth=2; mctx.beginPath();mctx.moveTo(mid,0);mctx.lineTo(mid,h);mctx.stroke();
+    recent.forEach((r,i)=>{ if(r.ms==null)return;   // a timed-out miss has no timing to plot
+      const wgt=(i+1)/n, len=h*0.2+h*0.64*wgt, x=mid+(clamp(r.ms,-span,span)/span)*(w/2);
+      const y0 = r.kind==='miss' ? 0 : (h-len)/2;   // misses hang from the top, so the outcome is not carried by hue alone
+      mctx.globalAlpha=0.12+0.88*wgt; mctx.strokeStyle=r.kind==='great'?C.great:(r.kind==='good'?C.zoneDim:C.miss);
       mctx.lineWidth=2.4; mctx.beginPath();mctx.moveTo(x,y0);mctx.lineTo(x,y0+len);mctx.stroke(); });
     mctx.globalAlpha=1;
-    if (recent.length){ const m=avg(recent.map(r=>r.ms)),x=mid+(clamp(m,-span,span)/span)*(w/2);
-      mctx.fillStyle='#e0805f'; mctx.beginPath();mctx.moveTo(x,1);mctx.lineTo(x-5,9);mctx.lineTo(x+5,9);mctx.closePath();mctx.fill(); }
+    const wt=weighted();
+    if (wt&&wt.bias!=null){ const x=mid+(wt.bias/span)*(w/2);
+      mctx.fillStyle=C.accent; mctx.beginPath();mctx.moveTo(x,1);mctx.lineTo(x-5,9);mctx.lineTo(x+5,9);mctx.closePath();mctx.fill(); }
+    $('m-lo').textContent='◀ '+(-span)+'ms'; $('m-hi').textContent='+'+span+'ms ▶';
   }
   function updateStats(){
     const wt=weighted();
-    $('s-rform').textContent=wt?`${Math.round(wt.great)}% great · ±${Math.round(wt.err)}ms`:'—';
+    $('s-rform').textContent = wt ? Math.round(wt.great)+'% great' : '—';   // one number on the big line; three did not fit
+    $('s-rsub').textContent  = (wt&&wt.err!=null) ? '±'+Math.round(wt.err)+'ms spread'+biasTxt(wt.bias) : '';
+    $('s-prog').textContent  = cfg.sessN ? Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN : '';
     $('s-att').textContent=stats.att; $('s-great').textContent=stats.great; $('s-good').textContent=stats.good;
-    $('s-miss').textContent=stats.miss; $('s-streak').textContent=stats.best;
+    $('s-miss').textContent=stats.miss; $('s-streak').textContent=stats.streak; $('s-best').textContent=stats.best;
     drawMeter();
   }
-  function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); recent.length=0; st.hyperStacks=0; updateStats(); saveProfile(); }
+  function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); recent.length=0; sess.length=0; st.hyperStacks=0; updateStats(); saveProfile(); }
+
+  // ---------- end-of-session summary ----------
+  function endSession(){
+    if(st.running)toggleRun();
+    const n=sess.length, sp=meterSpan();
+    const cnt=k=>sess.filter(r=>r.kind===k).length, pct=c=>Math.round(c/n*100);
+    const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
+    const half=Math.ceil(n/2), m=mean(sess), m1=mean(sess.slice(0,half)), m2=mean(sess.slice(half));
+    let run=0,best=0; sess.forEach(r=>{ const ok=r.kind==='great'||(cfg.merciless&&r.kind==='good');   // same rule the live streak uses
+      run=ok?run+1:0; if(run>best)best=run; });
+    const sgn=v=>v==null?'—':(Math.abs(v)<3?'on time':Math.round(Math.abs(v))+'ms '+(v>0?'late':'early'));
+    const e=computeEff();
+    const rows=[['great',cnt('great')+' · '+pct(cnt('great'))+'%'],
+                ['good', cnt('good') +' · '+pct(cnt('good'))+'%'],
+                ['miss', cnt('miss') +' · '+pct(cnt('miss'))+'%'],
+                ['average error', sgn(m)],
+                ['drift', (m1==null||m2==null)?'—':(Math.abs(m2-m1)<4?'steady':sgn(m1)+' → '+sgn(m2))],
+                ['best streak', best]];
+    $('sum-n').textContent=n+' checks · '+Math.round(e.revMs)+'ms rotation · great '+e.greatPct.toFixed(1)+'%';
+    $('sum-rows').innerHTML=rows.map(r=>'<div class="sr"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
+    $('summary').classList.remove('hidden');
+  }
+  function closeSummary(){ $('summary').classList.add('hidden'); }
 
   // ---------- effective-value labels (show how perks modify baseline) ----------
   function effSpan(base,eff,unit){ return Math.abs(eff-base)>(unit==='ms'?1:0.05) ? `${base}${unit} <span class="d">→ ${unit==='ms'?Math.round(eff):eff.toFixed(1)}${unit}</span>` : `${base}${unit}`; }
@@ -326,48 +505,116 @@
     $('v-rev').innerHTML=effSpan(cfg.revMs,e.revMs,'ms');
     $('v-great').innerHTML=effSpan(cfg.greatPct,e.greatPct,'%');
     $('v-good').innerHTML=effSpan(cfg.goodPct,e.goodPct,'%');
-    $('v-gap').innerHTML=cfg.merciless?`${cfg.gapMs===0?'0ms':cfg.gapMs+'ms'} <span class="d">→ continuous</span>`:(cfg.gapMs===0?'continuous':cfg.gapMs+'ms'); }
+    $('v-gap').innerHTML=cfg.merciless?`${cfg.gapMs}ms <span class="d">→ none, the chain never stops</span>`:(cfg.gapMs===0?'none':cfg.gapMs+' to '+(cfg.gapMs+Math.min(120,cfg.gapMs))+'ms'); }
 
   // ---------- profile ----------
-  const BOOLS=['unnerving','injured','hyper','doctor','lullaby','merciless','contrast','audio','showMs','showFps'];
-  const NUMS=['revMs','greatPct','goodPct','gapMs','dialR','posMin','posMax','spawnArea','blockPx','needlePx','needleLen'];
+  const BOOLS=['unnerving','injured','hyper','coulro','doctor','lullaby','merciless','contrast','audio','showMs','showFps','menuOpen','openAppearance','openControls'];
+  const NUMS=['revMs','greatPct','goodPct','gapMs','dialR','posMin','posMax','spawnArea','blockPx','needlePx','needleLen','vol','sessN'];
+  const KINDS=['great','good','miss'];
   function settingsObj(){ const o={hitBind:{...hitBind},startBind:{...startBind}}; NUMS.forEach(k=>o[k]=cfg[k]); BOOLS.forEach(k=>o[k]=cfg[k]); return o; }
   function statsObj(){ return { att:stats.att, great:stats.great, good:stats.good, miss:stats.miss, streak:stats.streak, best:stats.best, recent:recent.slice() }; }
-  function saveProfile(){ try{ localStorage.setItem(LSKEY,JSON.stringify({v:10,settings:settingsObj(),stats:statsObj()})); }catch(e){} }
-  function applyProfile(p){ if(!p)return; const s=p.settings; if(s){
-      NUMS.forEach(k=>{if(typeof s[k]==='number')cfg[k]=s[k];}); BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
-      if(s.hitBind&&s.hitBind.type)hitBind={...s.hitBind}; if(s.startBind&&s.startBind.type)startBind={...s.startBind}; }
-    if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{if(typeof p.stats[k]==='number')stats[k]=p.stats[k];});
-      recent.length=0; if(Array.isArray(p.stats.recent))p.stats.recent.forEach(r=>{if(r&&typeof r.ms==='number')recent.push({ms:r.ms,kind:r.kind});}); }
-    syncUI(); updateStats(); }
+  let saveT=0;
+  function saveNow(){ if(saveT){clearTimeout(saveT);saveT=0;}
+    try{ localStorage.setItem(LSKEY,JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()})); }catch(e){} }
+  function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
+  window.addEventListener('pagehide',saveNow);
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
+
+  const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':(b.type==='mouse'&&typeof b.code==='number'))&&typeof b.name==='string';
+  function applyProfile(p){ if(!p||typeof p!=='object')return; let migrated=false; const s=p.settings; if(s){
+      NUMS.forEach(k=>{ const v=s[k]; if(typeof v==='number'&&isFinite(v))cfg[k]=clamp(v,RANGE[k][0],RANGE[k][1]); });   // an out-of-range value used to break the state machine outright
+      BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
+      if(cfg.posMin>cfg.posMax){ const t=cfg.posMin; cfg.posMin=cfg.posMax; cfg.posMax=t; }
+      if((p.v||0)<11 && typeof s.blockPx==='number'){   // the band outline used to spill 2px past the band, so a pre-v11 value drew blockPx+2
+        cfg.blockPx=clamp(cfg.blockPx+2,RANGE.blockPx[0],RANGE.blockPx[1]); migrated=true; }
+      if(okBind(s.hitBind))hitBind={...s.hitBind}; if(okBind(s.startBind))startBind={...s.startBind};
+      if(hitBind.type===startBind.type&&hitBind.code===startBind.code) startBind={type:'key',code:'Enter',name:'Enter'}; }
+    if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
+      recent.length=0;
+      if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
+        if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?r.ms:null, kind:r.kind}); }); }
+    setVol(); syncUI(); updateStats(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
   function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
     hitBind={type:'key',code:'Space',name:'Space'}; startBind={type:'key',code:'Enter',name:'Enter'};
-    syncUI(); saveProfile(); }
+    setVol(); syncUI(); saveProfile(); }
 
   // ---------- UI sync ----------
   function syncSliders(){
     $('r-rev').value=cfg.revMs; $('r-great').value=cfg.greatPct; $('r-good').value=cfg.goodPct; updateEffLabels();
     $('r-gap').value=cfg.gapMs;
-    $('r-spawn').value=cfg.spawnArea*100; $('v-spawn').textContent=Math.round(cfg.spawnArea*100)+'%';
+    $('r-spawn').value=cfg.spawnArea*100; $('v-spawn').textContent=Math.round(cfg.spawnArea*100)+'%'; syncSpawnEnabled();
+    $('r-vol').value=Math.round(cfg.vol*100); $('v-vol').textContent=Math.round(cfg.vol*100)+'%';
     $('r-size').value=cfg.dialR; $('v-size').textContent=cfg.dialR+'px';
     $('r-posmin').value=cfg.posMin; $('v-posmin').textContent=cfg.posMin+'° ('+clockOf(cfg.posMin)+')';
     $('r-posmax').value=cfg.posMax; $('v-posmax').textContent=cfg.posMax+'° ('+clockOf(cfg.posMax)+')';
     $('r-block').value=cfg.blockPx; $('v-block').textContent=cfg.blockPx+'px';
     $('r-needle').value=cfg.needlePx; $('v-needle').textContent=cfg.needlePx+'px';
     $('r-length').value=cfg.needleLen; $('v-length').textContent=cfg.needleLen+'px';
+    syncPresets(); syncLengths(); syncWarn();
   }
-  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
+  function activePreset(){ for(const k in PRESETS){ const p=PRESETS[k];
+    if(p.revMs===cfg.revMs&&p.greatPct===cfg.greatPct&&p.goodPct===cfg.goodPct) return k; } return null; }
+  function syncPresets(){ const on=activePreset();
+    document.querySelectorAll('#presets .chip').forEach(c=>c.classList.toggle('on', c.dataset.p===on));
+    $('p-custom').style.display = on ? 'none' : 'inline';   // say so, rather than looking like nothing is selected
+  }
+
+  // Perk scopes, tier III, from the wiki: Unnerving, This Is Not Happening and Huntress Lullaby
+  // apply to repairing and healing only; Coulrophobia to healing only; Hyperfocus banks tokens
+  // while repairing or healing; Merciless Storm happens on a generator.
+  const PNAME={repair:'Repair',heal:'Heal',ds:'Decisive Strike',oc:'Overcharge',snap:'Snap Out of It'};
+  // Only repairing and healing produce a Good band, so a great-only baseline is one of the special
+  // checks even with no preset selected. That keeps the scope notes alive for hand-tuned values,
+  // which is most of the time. Telling heal from repair still needs a preset, so those stay gated.
+  function scopeOf(){ const p=activePreset();
+    if(p==='heal') return 'heal';
+    if(p==='repair'||p==='oc') return 'repair';   // Overcharge fires on a generator, so it counts as repairing
+    if(p==='ds'||p==='snap') return 'special';
+    return cfg.goodPct<=0 ? 'special' : 'unknown'; }
+  function conflicts(){
+    const p=activePreset(), sc=scopeOf(), e=computeEff(), out=[];
+    const which = p ? ' This baseline is '+PNAME[p]+'.' : ' This baseline is great-only, so it is one of those.';
+    if(cfg.coulro && (sc==='repair'||sc==='special')) out.push('Coulrophobia only speeds up healing checks.'+which);
+    if(cfg.hyper   && sc==='special')  out.push('Hyperfocus only banks tokens while repairing or healing.'+which);
+    if(cfg.injured && sc==='special')  out.push('This Is Not Happening grows the Great zone on repair and heal checks only.'+which);
+    if(cfg.lullaby && sc==='special')  out.push('Hex: Huntress Lullaby silences repair and heal checks only.'+which);
+    if(cfg.merciless && (sc==='heal'||sc==='special')) out.push('Merciless Storm happens on a generator.'+which);
+    if(cfg.unnerving && e.goodPct<=0)  out.push('Unnerving Presence only shrinks the Good band, and this check has none.');
+    if(cfg.merciless && cfg.hyper)     out.push('Merciless Storm has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    return out;
+  }
+  function syncWarn(){ const c=conflicts(), el=$('warn');
+    el.innerHTML=c.map(t=>'<div>'+t+'</div>').join(''); el.style.display=c.length?'block':'none'; }
+  function syncLengths(){ document.querySelectorAll('#lengths .chip').forEach(c=>c.classList.toggle('on', +c.dataset.n===cfg.sessN)); }
+  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
+  function syncSpawnEnabled(){ $('r-spawn').disabled=!cfg.doctor; $('l-spawn').classList.toggle('off',!cfg.doctor); }   // the value is only read inside the Madness branches
   function syncBinds(){ $('hitname').textContent=hitBind.name;$('hitname2').textContent=hitBind.name;$('startname').textContent=startBind.name;$('startname2').textContent=startBind.name; }
-  function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders(); }
+  function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders();
+    $('menu').classList.toggle('hidden',!cfg.menuOpen);
+    $('d-appearance').open=cfg.openAppearance; $('d-controls').open=cfg.openControls; }
+  function setMenu(open){ cfg.menuOpen=open; $('menu').classList.toggle('hidden',!open);
+    if(st.phase!=='active'){ st.ox=centreX(); }   // on a narrow window the dial slides clear of the panel
+    saveProfile(); }
 
   // ---------- controls ----------
   for(const id in CB)$(id).addEventListener('change',e=>{ cfg[CB[id]]=e.target.checked;
-    if(CB[id]==='hyper')st.hyperStacks=0; updateEffLabels(); saveProfile(); });
+    if(CB[id]==='hyper')st.hyperStacks=0; if(CB[id]==='doctor')syncSpawnEnabled();
+    updateEffLabels(); syncWarn(); updateStats(); saveProfile(); });
   function slider(id,key,fmtFn){ $(id).addEventListener('input',e=>{ cfg[key]=+e.target.value; fmtFn(); saveProfile(); }); }
-  slider('r-rev','revMs',updateEffLabels);
-  slider('r-great','greatPct',updateEffLabels);
-  slider('r-good','goodPct',updateEffLabels);
+  document.querySelectorAll('#presets .chip').forEach(c=>c.addEventListener('click',()=>{
+    Object.assign(cfg,PRESETS[c.dataset.p]); syncSliders(); drawMeter(); saveProfile(); }));
+  document.querySelectorAll('#lengths .chip').forEach(c=>c.addEventListener('click',()=>{
+    cfg.sessN=+c.dataset.n; sess.length=0;   // a new target means a new count, not a partial one
+    syncLengths(); updateStats(); saveProfile(); }));
+  $('sum-close').addEventListener('click',closeSummary);
+  $('sum-again').addEventListener('click',()=>{ closeSummary(); toggleRun(); });
+  const effAndMeter=()=>{ updateEffLabels(); syncPresets(); syncWarn(); drawMeter(); };   // the histogram scale follows the rotation time and the zone sizes
+  slider('r-rev','revMs',effAndMeter);
+  slider('r-great','greatPct',effAndMeter);
+  slider('r-good','goodPct',effAndMeter);
   slider('r-gap','gapMs',updateEffLabels);
+  $('r-vol').addEventListener('input',e=>{ cfg.vol=+e.target.value/100; $('v-vol').textContent=Math.round(cfg.vol*100)+'%'; setVol(); saveProfile(); });
+  $('r-vol').addEventListener('change',()=>{ try{actx();}catch(e){} SND.great(); });   // on release, so you can hear what you set
   const posLbl=(id,v)=>$(id).textContent=v+'° ('+clockOf(v)+')';
   $('r-posmin').addEventListener('input',e=>{ cfg.posMin=+e.target.value;
     if(cfg.posMin>cfg.posMax){ cfg.posMax=cfg.posMin; $('r-posmax').value=cfg.posMax; posLbl('v-posmax',cfg.posMax); }
@@ -381,21 +628,33 @@
   slider('r-length','needleLen',()=>$('v-length').textContent=cfg.needleLen+'px');
   $('r-spawn').addEventListener('input',e=>{ cfg.spawnArea=+e.target.value/100; $('v-spawn').textContent=Math.round(cfg.spawnArea*100)+'%'; spawnHintUntil=now()+1600; saveProfile(); });
 
-  $('gear').addEventListener('click',()=>$('menu').classList.toggle('hidden'));
+  $('gear').addEventListener('click',()=>setMenu(!cfg.menuOpen));
+  $('d-appearance').addEventListener('toggle',()=>{ cfg.openAppearance=$('d-appearance').open; saveProfile(); });
+  $('d-controls').addEventListener('toggle',()=>{ cfg.openControls=$('d-controls').open; saveProfile(); });
   function toggleRun(){ try{actx();}catch(e){}
     st.running=!st.running; $('btn-start').textContent=st.running?'Stop':'Start'; $('btn-start').classList.toggle('primary',!st.running);
-    if(st.running){ st.phase='idle'; st.hyperStacks=0; updateStats(); saveProfile(); }
-    else { st.phase='idle'; st.ox=dial.width/2; st.oy=dial.height/2; } }   // Stop → back to the centred "Press to start" state
+    if(st.running){ st.phase='idle'; st.hyperStacks=0; sess.length=0; closeSummary(); updateStats(); saveProfile(); }
+    else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.hitAng=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
   $('btn-start').addEventListener('click',toggleRun);
   $('btn-reset').addEventListener('click',resetSession);
-  $('btn-default').addEventListener('click',resetDefaults);
+  $('btn-default').addEventListener('click',()=>{   // it sits next to Reset stats and wipes screenshot-calibrated values, so ask
+    if(confirm('Reset every setting to its default? Your calibration will be lost. Stats are kept.')) resetDefaults(); });
   $('btn-hitkey').addEventListener('click',()=>{rebinding='hit';$('btn-hitkey').textContent='Press…';});
   $('btn-startkey').addEventListener('click',()=>{rebinding='start';$('btn-startkey').textContent='Press…';});
 
-  function fit(){ dial.width=window.innerWidth; dial.height=window.innerHeight; if(st.phase!=='active'){ st.ox=dial.width/2; st.oy=dial.height/2; } }
+  function fit(){ const dpr=window.devicePixelRatio||1;   // back the canvas with real device pixels, then draw in CSS px
+    VW=window.innerWidth; VH=window.innerHeight;
+    dial.width=Math.round(VW*dpr); dial.height=Math.round(VH*dpr);
+    dctx.setTransform(dpr,0,0,dpr,0,0);                   // resizing a canvas resets its state, so this must come after
+    MW=meter.clientWidth||300; MH=62;
+    meter.width=Math.round(MW*dpr); meter.height=Math.round(MH*dpr);
+    mctx.setTransform(dpr,0,0,dpr,0,0); drawMeter();
+    if(st.phase!=='active'){ st.ox=centreX(); st.oy=VH/2; }
+    else { const R=cfg.dialR;   // a Madness check placed for the old size must not end up off-screen
+      st.ox=clamp(st.ox,R,Math.max(R,VW-R)); st.oy=clamp(st.oy,R,Math.max(R,VH-R)); } }
   window.addEventListener('resize',fit);
   $('btn-fs').addEventListener('click',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:10,settings:settingsObj(),stats:statsObj()},null,2)],{type:'application/json'});
+  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()},null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
   $('btn-import').addEventListener('click',()=>$('imp').click());
   $('imp').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
@@ -404,13 +663,24 @@
   // ---------- input ----------
   const MOUSENAMES={0:'Mouse L',1:'Mouse M',2:'Mouse R',3:'M4',4:'M5'};
   const overUI=e=>/INPUT|SELECT|BUTTON|TEXTAREA|OPTION|LABEL/.test(e.target.tagName||'')||$('menu').contains(e.target);
-  function setBind(target,b){ if(target==='hit')hitBind=b; else startBind=b; $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; rebinding=null; syncBinds(); saveProfile(); }
+  function setBind(target,b){
+    const cur = target==='hit'?hitBind:startBind, other = target==='hit'?startBind:hitBind;
+    if(other.type===b.type&&other.code===b.code){          // binding onto the other action would silently kill one of them, so swap instead
+      if(target==='hit') startBind={...cur}; else hitBind={...cur}; }
+    if(target==='hit')hitBind=b; else startBind=b;
+    $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; rebinding=null; syncBinds(); saveProfile(); }
   const keyName=e=>e.code==='Space'?'Space':(e.key.length===1?e.key.toUpperCase():e.code.replace('Key',''));
   const matchKey=(b,e)=>b.type==='key'&&e.code===b.code;
   const matchMouse=(b,e)=>b.type==='mouse'&&e.button===b.code&&(e.button>=3||!overUI(e));
+  const onControl=()=>{ const a=document.activeElement, t=a&&a.tagName, y=a&&a.type;   // let a focused button or switch keep its own Enter/Space
+    return t==='BUTTON'||(t==='INPUT'&&(y==='checkbox'||y==='file')); };
   window.addEventListener('keydown',e=>{
     if(rebinding){ if(e.code==='Escape'){ rebinding=null; $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; }
       else setBind(rebinding,{type:'key',code:e.code,name:keyName(e)}); e.preventDefault(); return; }
+    if(e.code==='Escape'){
+      if(!$('summary').classList.contains('hidden')){ closeSummary(); e.preventDefault(); return; }
+      if(cfg.menuOpen){ setMenu(false); if(document.activeElement)document.activeElement.blur(); e.preventDefault(); return; } }
+    if(onControl())return;
     if(matchKey(startBind,e)){ e.preventDefault(); if(!e.repeat)toggleRun(); return; }
     if(matchKey(hitBind,e)){ e.preventDefault(); if(st.running&&!e.repeat)onPress(e.timeStamp); } });
   window.addEventListener('mousedown',e=>{
@@ -420,14 +690,15 @@
   ['mouseup','auxclick'].forEach(ev=>window.addEventListener(ev,e=>{ if(matchMouse(hitBind,e)||matchMouse(startBind,e))e.preventDefault(); },true));
   window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
 
-  // keep focus off controls so Space/Enter never re-trigger a clicked widget
-  document.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>b.blur()));
-  document.querySelectorAll('.sw input').forEach(el=>el.addEventListener('change',()=>el.blur()));
+  // drop focus after a POINTER interaction, so the hit key is never eaten by the widget you just clicked.
+  // Keyboard activation deliberately keeps focus, otherwise tabbing through the panel would be unusable.
+  document.querySelectorAll('button').forEach(b=>b.addEventListener('pointerup',()=>b.blur()));
+  document.querySelectorAll('.sw').forEach(l=>l.addEventListener('pointerup',()=>l.querySelector('input').blur()));
 
   // ---------- boot ----------
   fit();
   try{ const saved=localStorage.getItem(LSKEY); if(saved)applyProfile(JSON.parse(saved)); }catch(e){}
-  syncUI(); updateStats(); st.ox=dial.width/2; st.oy=dial.height/2;
+  syncUI(); updateStats(); st.ox=centreX(); st.oy=VH/2;
   requestAnimationFrame(frame);
 })();
 </script>
