@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Skill Check Trainer</title>
+<meta name="description" content="A browser trainer for the Dead by Daylight skill check. Wiki-calibrated zones and timings, perk simulation, scored sessions and a history of your runs." />
+<meta name="theme-color" content="#13110d" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="DBD Skill Check Trainer" />
+<meta property="og:description" content="Practise Great skill checks with wiki-calibrated zones, perk simulation, scored sessions and a history of your runs." />
+<meta property="og:url" content="https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/" />
+<!-- inline so the file stays self-contained: the dial, its white zone and the needle at 12 o'clock -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Ccircle%20cx='16'%20cy='16'%20r='12'%20fill='none'%20stroke='%238b8276'%20stroke-width='3'/%3E%3Cpath%20d='M16%204A12%2012%200%200%201%2026.4%2010'%20fill='none'%20stroke='%23ffffff'%20stroke-width='4'/%3E%3Cpath%20d='M16%2015V3'%20stroke='%23ff3b3b'%20stroke-width='2.5'/%3E%3C/svg%3E" />
 <style>
   :root{
     --bg:#13110d; --panel:rgba(26,22,17,0.82); --line:rgba(255,255,255,0.09);
@@ -16,7 +24,9 @@
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
     font-family:"Segoe UI",system-ui,Inter,Arial,sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
   canvas#dial{position:fixed;inset:0;width:100%;height:100%;display:block;background:radial-gradient(circle at 50% 47%,#15140f 0%,#070707 78%)}
-  #hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:13px;pointer-events:none}
+  #hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:13px;pointer-events:none;text-align:center}
+  #hint .touch{display:none}
+  @media (pointer:coarse){ #hint .keys{display:none} #hint .touch{display:inline} }
   #gear{position:fixed;top:14px;right:14px;z-index:10;width:44px;height:44px;border-radius:13px;
     border:1px solid var(--line);background:rgba(26,22,17,0.8);backdrop-filter:blur(8px);color:var(--txt);
     font-size:20px;cursor:pointer;transition:transform .25s,filter .2s;display:flex;align-items:center;justify-content:center}
@@ -91,11 +101,20 @@
   .sr{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--line)}
   .sr span:first-child{color:var(--dim)}
   .sr b{font-variant-numeric:tabular-nums;font-weight:600}
+  #trend{width:100%;height:52px;background:#0d0c09;border:1px solid var(--line);border-radius:10px;display:block;margin-top:8px}
+  .hr{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 0;
+    border-top:1px solid var(--line);color:var(--dim);font-variant-numeric:tabular-nums}
+  .hr b{color:var(--dim);font-weight:600}
+  .hr.on b{color:var(--great)}   /* the runs comparable to what you have set up right now */
+  @media (max-width:430px){      /* on a phone the panel takes the width it needs and the dial sits behind it */
+    #menu{width:auto;left:8px;right:8px;top:62px;max-height:calc(100vh - 74px)}
+    #summary{width:auto;left:12px;right:12px;transform:translateY(-50%);margin:0}
+  }
 </style>
 </head>
 <body>
   <canvas id="dial"></canvas>
-  <div id="hint"><kbd id="startname">Enter</kbd> start / stop · <kbd id="hitname">Space</kbd> hit · ⚙ menu top-right</div>
+  <div id="hint"><span class="keys"><kbd id="startname">Enter</kbd> start / stop · <kbd id="hitname">Space</kbd> hit</span><span class="touch">Tap anywhere to start, then tap to hit</span> · ⚙ menu top-right</div>
 
   <button id="gear" title="Menu">&#9881;</button>
   <div id="menu" class="hidden">
@@ -127,17 +146,30 @@
     <label class="sw"><input type="checkbox" id="c-injured" /><span class="track"></span><span>This Is Not Happening</span><span class="eff">+30% great</span></label>
     <label class="sw"><input type="checkbox" id="c-hyper" /><span class="track"></span><span>Hyperfocus</span><span class="eff">+4% speed/stack · max 6</span></label>
     <label class="sw"><input type="checkbox" id="c-coulro" /><span class="track"></span><span>Coulrophobia</span><span class="eff">+50% speed · healing</span></label>
+    <label class="sw"><input type="checkbox" id="c-stake" /><span class="track"></span><span>Stake Out</span><span class="eff">good counts as great · 4</span></label>
     <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse + random spawn</span></label>
     <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
     <label class="sw"><input type="checkbox" id="c-merciless" /><span class="track"></span><span>Merciless Storm</span><span class="eff">continuous · no great</span></label>
+    <div class="note">Only what changes the check itself is simulated. Trigger odds, bonus progression and repair speed are left out.</div>
     <div class="warn" id="warn"></div>
 
     <h2>Session</h2>
+    <label class="sw"><input type="checkbox" id="c-adaptive" /><span class="track"></span><span>Adaptive difficulty</span><span class="eff" id="e-adapt">off</span></label>
+    <div class="note">A training aid, not a game effect. The zone tightens after 3 greats in a row and loosens after anything else, so it settles at the tightest window you can hold.</div>
     <div class="form">Recent form: <b id="s-rform">—</b></div>
     <div class="formsub" id="s-rsub"></div>
     <div class="row"><span>checks <b id="s-att">0</b></span><span>great <b id="s-great" style="color:var(--great)">0</b></span><span>good <b id="s-good">0</b></span><span>miss <b id="s-miss" style="color:var(--miss)">0</b></span><span>streak <b id="s-streak">0</b></span><span>best <b id="s-best">0</b></span></div>
     <canvas id="meter" width="304" height="62"></canvas>
     <div class="mlbl"><span id="m-lo">&#9664;</span><span>green = great window · miss hangs</span><span id="m-hi">&#9654;</span></div>
+
+    <details class="sec" id="d-history">
+    <summary>History</summary>
+    <div class="note" id="h-empty">Pick a session length, finish the run, and it lands here.</div>
+    <canvas id="trend" width="304" height="52"></canvas>
+    <div class="mlbl" id="h-legend"><span>oldest</span><span>% great per run · green = same setup</span><span>latest</span></div>
+    <div id="hist-rows"></div>
+    <div class="btns"><button class="b" id="btn-clearhist">Clear history</button></div>
+    </details>
 
     <h2>Baseline skill check</h2>
     <div class="note">White zone = <b>Great</b> (front) + <b>Good</b> (the lenient part after it). This Is Not Happening grows only Great; Unnerving shrinks only Good.</div>
@@ -187,7 +219,7 @@
     <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
     <div class="btns"><button class="b" id="btn-default">Reset settings</button></div>
     <input type="file" id="imp" accept="application/json" style="display:none" />
-    <div class="note">Profile auto-saves · Export / Import to move it · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>. Reset settings wipes your calibration and asks first.</div>
+    <div class="note">Profile auto-saves · Export / Import moves settings, stats and run history together · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>. Reset settings wipes your calibration and asks first; it leaves stats and history alone.</div>
     </details>
   </div>
 
@@ -204,8 +236,14 @@
   const $=id=>document.getElementById(id);
   const dial=$('dial'), dctx=dial.getContext('2d');
   const meter=$('meter'), mctx=meter.getContext('2d');
-  const LSKEY='dbd_sc_profile_v10', PVER=11, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
+  const trend=$('trend'), tctx=trend.getContext('2d');
+  const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
+  const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
+  const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
+  const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
+  const ADAPTUP=1.08, ADAPTDN=0.94, ADAPTRUN=3, ADAPTMIN=0.35, ADAPTMAX=1.5;   // 3-down-1-up staircase; it settles near the window you hold about 4 times in 5
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));   // history rows are built with innerHTML and an imported profile is not ours
 
   // Colours the canvas shares with the panel live in :root and are read from there, so editing
   // the stylesheet restyles the dial and the meter too. Only dial-specific hues stay literal here.
@@ -220,8 +258,8 @@
   };
   const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:50, posMin:120, posMax:320, spawnArea:0.5,
     // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
-    blockPx:7, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, doctor:false, lullaby:false, merciless:false, contrast:false, audio:true, showMs:true, showFps:false,
-    menuOpen:true, openAppearance:false, openControls:false };   // panel and section state, so the layout you left is the one you come back to
+    blockPx:7, needlePx:3, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
+    menuOpen:true, openAppearance:false, openControls:false, openHistory:false };   // panel and section state, so the layout you left is the one you come back to
   const RANGE = { revMs:[500,2000], greatPct:[0,12], goodPct:[0,30], gapMs:[0,1200], dialR:[30,260], posMin:[90,330],   // mirrors the slider bounds; imported profiles are clamped to these
                   posMax:[90,330], spawnArea:[0,1], blockPx:[1,40], needlePx:[1,30], needleLen:[10,160], vol:[0,1], sessN:[0,500] };
   // Datamined per-action values, tier III. deadbydaylight.wiki.gg/wiki/Skill_Checks
@@ -233,13 +271,15 @@
   const cfg = JSON.parse(JSON.stringify(DEFAULTS));
   let hitBind={type:'key',code:'Space',name:'Space'}, startBind={type:'key',code:'Enter',name:'Enter'};
   let rebinding=null, spawnHintUntil=0;
-  let VW=0, VH=0, MW=300, MH=62;   // canvas sizes in CSS px; the backing stores are devicePixelRatio times larger
+  let VW=0, VH=0, MW=300, MH=62, TW=300, TH=52;   // canvas sizes in CSS px; the backing stores are devicePixelRatio times larger
 
   const st = { phase:'idle', running:false, t0:0, needle:0, zoneStart:200,
-               eff:{revMs:1100,greatDeg:10.8,goodDeg:46.8,greatPct:3,goodPct:10}, ox:0, oy:0, spin:1, n0:0, nextAt:0, hyperStacks:0 };
+               eff:{revMs:1100,greatDeg:10.8,goodDeg:46.8,greatPct:3,goodPct:10}, ox:0, oy:0, spin:1, n0:0, nextAt:0, hyperStacks:0,
+               stakeTokens:0, stakeAt:0, adapt:1, okRun:0, arc:null, prevT:0, away:false };
   const stats = { att:0, great:0, good:0, miss:0, streak:0, best:0 };
   const recent=[];   // last 60 checks, for the rolling form readout
   const sess=[];     // the current run only, for the end-of-session summary
+  const hist=[];     // one row per finished session, oldest first, so a run can be compared with the last comparable one
 
   const now=()=>performance.now();
   const fmt=ms=>(ms>=0?'+':'−')+Math.abs(ms).toFixed(0)+'ms';
@@ -260,7 +300,9 @@
   const SND={ appear(){if(cfg.audio&&!cfg.lullaby){tone(1300,0.05,0.045,'triangle',0,1750);}},
     good(){if(cfg.audio)tone(720,0.14,0.10,'sine');},
     great(){if(cfg.audio){tone(1760,0.10,0.14,'square');tone(2637,0.13,0.09,'sine',0.004);noise(0.03,0.05,6000);}},
-    fail(){if(cfg.audio){noise(0.42,0.6,850);tone(82,0.38,0.26,'sine',0,55);tone(120,0.3,0.16,'sawtooth',0.01);}} };
+    // a check that ran out gets a duller thud than a mistimed press, so you can tell the two apart without looking
+    fail(soft){if(cfg.audio){ if(soft){noise(0.18,0.28,600);tone(96,0.26,0.18,'sine',0,60);}
+      else {noise(0.42,0.6,850);tone(82,0.38,0.26,'sine',0,55);tone(120,0.3,0.16,'sawtooth',0.01);} }} };
 
   // ---------- skill check ----------
   function computeEff(){
@@ -271,15 +313,18 @@
     let great = cfg.greatPct * (cfg.injured?1.30:1);     // This Is Not Happening grows ONLY great
     if (cfg.merciless) great = 0;                        // Merciless Storm: no Great zone at all
     const good  = cfg.goodPct  * (cfg.unnerving?0.4:1);  // Unnerving −60% shrinks ONLY good
-    const total = great + good;                          // white success zone = great (front) + good (after)
-    return { revMs, greatDeg:great/100*360, goodDeg:total/100*360, greatPct:great, goodPct:good };
+    const a = cfg.adaptive ? st.adapt : 1;               // the staircase scales the whole success zone, so the check keeps its shape and only its width moves
+    const total = (great + good) * a;                    // white success zone = great (front) + good (after)
+    return { revMs, greatDeg:great*a/100*360, goodDeg:total/100*360, greatPct:great*a, goodPct:good*a };
   }
+  function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
+    if(ok){ if(++st.okRun>=ADAPTRUN){ st.okRun=0; st.adapt=clamp(st.adapt*ADAPTDN,ADAPTMIN,ADAPTMAX); } }
+    else { st.okRun=0; st.adapt=clamp(st.adapt*ADAPTUP,ADAPTMIN,ADAPTMAX); } }
   function startCheck(){
     st.eff=computeEff();
     const maxStart=Math.max(0,360-st.eff.goodDeg);   // the zone must finish before the needle's 12 o'clock start, or the drawn tail would score as a miss
     const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),maxStart), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),maxStart);
     placeDial(); st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;   // Madness reverses the sweep at random
-    st.hitAng=null;
     st.n0=0; st.needle=0; st.zoneStart = st.spin*(lo + Math.random()*(hi-lo));   // leading edge, ahead of 12 o'clock in the spin direction
     st.t0=now(); st.phase='active'; SND.appear();
   }
@@ -298,18 +343,22 @@
     if(st.eff.greatDeg>0&&d>=0&&d<=st.eff.greatDeg)return'great'; if(d>st.eff.greatDeg&&d<=st.eff.goodDeg)return'good'; return'miss'; }
 
   function register(kind, signedMs, pressed){
-    const t=now(); stats.att++;
+    const t=now(); let conv=false;
+    if (kind==='good' && cfg.stake && st.stakeTokens>0){ st.stakeTokens--; kind='great'; conv=true; }   // Stake Out spends a token to turn a Good into a Great, which is why the combo feeds Hyperfocus
+    stats.att++;
     if (kind==='great'){ stats.great++; stats.streak++; stats.best=Math.max(stats.best,stats.streak);
       if(cfg.hyper)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); SND.great(); }
     else {
       if(kind==='good'){ stats.good++; if(cfg.merciless){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
         if(cfg.hyper){ if(st.eff.greatDeg<=0)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); else st.hyperStacks=0; } SND.good(); }   // no Great zone → Hyperfocus builds on Good instead
-      else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; st.failAt=now(); SND.fail(); } }   // failAt drives the ring flash, the only visual a timed-out miss gets
-    if (cfg.hyper) updateEffLabels();
-    recent.push({ms:pressed?signedMs:null, kind}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
-    if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind});   // only a bounded run needs a transcript; Free mode would grow it forever
-    st.hitAng = pressed ? st.needle : null;
-    if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
+      else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; st.failAt=now(); SND.fail(!pressed); } }   // failAt drives the ring flash, the only visual a timed-out miss gets
+    adaptStep(kind==='great' || (st.eff.greatDeg<=0 && kind==='good'));   // same bar the streak uses: a great, or a good where no great exists
+    if (cfg.hyper||cfg.adaptive) updateEffLabels();
+    recent.push({ms:pressed?signedMs:null, kind, conv}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
+    if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind, conv});   // only a bounded run needs a transcript; Free mode would grow it forever
+    // the feedback arc is drawn from a snapshot: under Merciless Storm the live values below are overwritten before it ever gets drawn
+    st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
+    if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
     updateStats(); saveProfile();
     if (cfg.merciless){   // Merciless Storm: continue from the retained needle angle — on ANY end (success OR fail)
       const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
@@ -329,16 +378,24 @@
   // ---------- loop ----------
   function frame(){
     requestAnimationFrame(frame);
-    const t=now(); st.blank=false;
-    if(cfg.showFps){ const dt=t-(st.lastFrameT||t); st.lastFrameT=t; if(dt>0)st.fps=st.fps?st.fps*0.9+100/dt:1000/dt; }
-    if (st.running){
+    if (document.hidden){ st.away=true; return; }   // there is nothing to draw, and the check must not run on while you are somewhere else
+    const t=now(), dt=t-(st.prevT||t); st.prevT=t; st.blank=false;
+    if(cfg.showFps){ const df=t-(st.lastFrameT||t); st.lastFrameT=t; if(df>0)st.fps=st.fps?st.fps*0.9+100/df:1000/df; }
+    if (st.running && (st.away||dt>STALLMS)) resync(t);   // the page stopped, you did not
+    else if (st.running){
       if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
       else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
       else if (st.phase==='idle') startCheck();
       else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
+      if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
     }
+    st.away=false;
     render();
   }
+  // Browsers stop animation frames on a hidden tab, so the frame you come back on is minutes old:
+  // the needle would jump clean past the zone and book a miss you never had. Drop the check instead.
+  function resync(t){ st.failAt=0; st.msAt=0; st.arc=null; st.stakeAt=t;
+    if (st.phase==='active') startCheck(); else st.nextAt=t+cfg.gapMs; }
 
   // ---------- render ----------
   function render(){
@@ -369,16 +426,18 @@
       if(!st.running){ dctx.fillStyle=C.idle; dctx.font='15px Segoe UI'; dctx.textAlign='center';
         dctx.fillText('Press '+startBind.name+' to start',(st.ox||w/2),(st.oy||h/2)+R+34); }
     }
-    if (st.phase==='resolved' && st.hitAng!=null && st.eff.goodDeg>0){   // the error as a distance, drawn against the zone you were aiming at
-      const idc=(st.eff.greatDeg>0?st.eff.greatDeg:st.eff.goodDeg)/2, tgt=st.zoneStart+st.spin*idc;
-      const end=tgt+clamp(st.hitAng-tgt,-140,140), rr=Ro+Math.max(4,5*k);
+    const A=st.arc;   // the error as a distance, drawn against the zone you were aiming at. From a snapshot, so a Merciless chain gets it too instead of being the one mode with no feedback
+    if (A && A.wd>0 && (st.phase==='resolved' || now()-A.at<ARCMS)){
+      const idc=(A.gd>0?A.gd:A.wd)/2, tgt=A.zs+A.spin*idc;
+      const end=tgt+clamp(A.hit-tgt,-140,140), rr=Ro+Math.max(4,5*k);
       dctx.save();
-      dctx.strokeStyle=st.lastKind==='great'?C.great:(st.lastKind==='good'?C.zone:C.miss);
+      if (st.phase==='active') dctx.globalAlpha=clamp((ARCMS-(now()-A.at))/250,0,1);   // it is sharing the dial with a live check now, so let it fade
+      dctx.strokeStyle=A.conv?C.accent:(A.kind==='great'?C.great:(A.kind==='good'?C.zone:C.miss));
       dctx.lineWidth=Math.max(1.5,2.5*k); dctx.lineCap='round';
-      dctx.beginPath(); dctx.arc(cx,cy,rr,(Math.min(tgt,end)-90)*D2R,(Math.max(tgt,end)-90)*D2R,false); dctx.stroke();
+      dctx.beginPath(); dctx.arc(A.ox,A.oy,rr,(Math.min(tgt,end)-90)*D2R,(Math.max(tgt,end)-90)*D2R,false); dctx.stroke();
       const ha=(end-90)*D2R;   // a tick on the far end, so the arc reads as a length and not as a smear
-      dctx.beginPath(); dctx.moveTo(cx+Math.cos(ha)*(rr-Math.max(3,4*k)),cy+Math.sin(ha)*(rr-Math.max(3,4*k)));
-      dctx.lineTo(cx+Math.cos(ha)*(rr+Math.max(4,5*k)),cy+Math.sin(ha)*(rr+Math.max(4,5*k))); dctx.stroke();
+      dctx.beginPath(); dctx.moveTo(A.ox+Math.cos(ha)*(rr-Math.max(3,4*k)),A.oy+Math.sin(ha)*(rr-Math.max(3,4*k)));
+      dctx.lineTo(A.ox+Math.cos(ha)*(rr+Math.max(4,5*k)),A.oy+Math.sin(ha)*(rr+Math.max(4,5*k))); dctx.stroke();
       dctx.restore();
     }
     if (st.running){
@@ -387,18 +446,15 @@
       const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:''].filter(Boolean).join('   ·   ');
       if (label){ dctx.save(); dctx.fillStyle=C.idle; dctx.font=Math.round(11*Math.min(Math.max(k,1),2))+'px Segoe UI';
         dctx.textAlign='center'; dctx.fillText(label,cx,below); dctx.restore(); below+=Math.max(15,12*k); }
-      if (cfg.hyper){   // Hyperfocus tokens; they changed the speed by up to 24% with nothing on screen to say so
-        const pr=Math.max(2,2.2*k), pg=pr*3.2, x0=cx-(MAXHYPER-1)*pg/2;
-        for(let i=0;i<MAXHYPER;i++){ dctx.beginPath(); dctx.arc(x0+i*pg,below,pr,0,TAU);
-          dctx.fillStyle = i<st.hyperStacks ? C.accent : 'rgba(255,255,255,0.13)'; dctx.fill(); }
-      }
+      if (cfg.hyper){ pipRow(cx,below,MAXHYPER,st.hyperStacks,C.accent,k); below+=Math.max(11,9*k); }   // Hyperfocus tokens; they changed the speed by up to 24% with nothing on screen to say so
+      if (cfg.stake) pipRow(cx,below,MAXSTAKE,st.stakeTokens,C.great,k);   // Stake Out tokens, green because each one turns a Good into a Great
     }
     if (st.failAt){ const fl=(FAILMS-(now()-st.failAt))/FAILMS;   // full-alpha red wash on the ring; a timed-out miss has no other visual
       if (fl>0){ dctx.save(); dctx.globalAlpha=clamp(fl,0,1); dctx.lineWidth=Math.max(1.5,3*R/DEFAULTS.dialR);
         dctx.strokeStyle=C.miss; dctx.beginPath(); dctx.arc(st.ox,st.oy,R,0,TAU); dctx.stroke(); dctx.restore(); } }
     if (cfg.showMs && st.msAt){ const el=now()-st.msAt; if(el<650){
       dctx.save(); dctx.globalAlpha=el<450?1:clamp((650-el)/200,0,1);
-      dctx.fillStyle=st.lastKind==='great'?C.great:(st.lastKind==='good'?C.zone:C.miss);
+      dctx.fillStyle=st.lastConv?C.accent:(st.lastKind==='great'?C.great:(st.lastKind==='good'?C.zone:C.miss));
       dctx.font='600 '+Math.max(13,Math.round(cfg.dialR*0.34))+'px Segoe UI'; dctx.textAlign='center'; dctx.textBaseline='middle';
       dctx.fillText(fmt(st.lastMs),st.msX,st.msY); dctx.textBaseline='alphabetic'; dctx.restore(); }
     }
@@ -416,6 +472,9 @@
     dctx.fillText('spawn area', cx, y>20?y-8:y+18);
     dctx.restore();
   }
+  function pipRow(cx,y,total,filled,color,k){ const pr=Math.max(2,2.2*k), pg=pr*3.2, x0=cx-(total-1)*pg/2;
+    for(let i=0;i<total;i++){ dctx.beginPath(); dctx.arc(x0+i*pg,y,pr,0,TAU);
+      dctx.fillStyle = i<filled ? color : 'rgba(255,255,255,0.13)'; dctx.fill(); } }
   function ring(cx,cy,R,color,gs,we){ dctx.save(); dctx.lineWidth=Math.max(1,2*R/DEFAULTS.dialR); dctx.strokeStyle=color;
     if (we>gs){ const s=(we-90)*D2R,e=(gs+360-90)*D2R; dctx.beginPath(); dctx.arc(cx,cy,R,s,e,false); dctx.stroke(); }
     else { dctx.beginPath(); dctx.arc(cx,cy,R,0,TAU); dctx.stroke(); } dctx.restore(); }
@@ -438,7 +497,7 @@
     const win=(e.greatDeg>0?e.greatDeg:e.goodDeg)/2/om;
     const a=recent.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);
     const p90=a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0;   // a percentile, so one panic press cannot flatten the chart
-    return Math.max(60, Math.round(Math.max(win*1.25, p90*1.15))); }
+    return clamp(Math.round(Math.max(win*1.25, p90*1.15)), 60, MSMAX); }     // the ceiling keeps the gridline loop below finite whatever a profile file claims
   function weighted(){ const sp=meterSpan(); let ws=0,wg=0,we=0,wb=0,wn=0;
     recent.forEach((r,i)=>{ const w=i+1; ws+=w; if(r.kind==='great')wg+=w;
       if(r.ms!=null){ const m=clamp(r.ms,-sp,sp); we+=w*Math.abs(m); wb+=w*m; wn+=w; } });   // clamped: one panic press must not swamp the average
@@ -457,7 +516,7 @@
     recent.forEach((r,i)=>{ if(r.ms==null)return;   // a timed-out miss has no timing to plot
       const wgt=(i+1)/n, len=h*0.2+h*0.64*wgt, x=mid+(clamp(r.ms,-span,span)/span)*(w/2);
       const y0 = r.kind==='miss' ? 0 : (h-len)/2;   // misses hang from the top, so the outcome is not carried by hue alone
-      mctx.globalAlpha=0.12+0.88*wgt; mctx.strokeStyle=r.kind==='great'?C.great:(r.kind==='good'?C.zoneDim:C.miss);
+      mctx.globalAlpha=0.12+0.88*wgt; mctx.strokeStyle=r.conv?C.accent:(r.kind==='great'?C.great:(r.kind==='good'?C.zoneDim:C.miss));   // a Stake Out great was a Good you timed, so it is worth telling apart
       mctx.lineWidth=2.4; mctx.beginPath();mctx.moveTo(x,y0);mctx.lineTo(x,y0+len);mctx.stroke(); });
     mctx.globalAlpha=1;
     const wt=weighted();
@@ -472,9 +531,11 @@
     $('s-prog').textContent  = cfg.sessN ? Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN : '';
     $('s-att').textContent=stats.att; $('s-great').textContent=stats.great; $('s-good').textContent=stats.good;
     $('s-miss').textContent=stats.miss; $('s-streak').textContent=stats.streak; $('s-best').textContent=stats.best;
+    $('e-adapt').textContent = cfg.adaptive ? 'zone at '+Math.round(st.adapt*100)+'%' : 'off';
     drawMeter();
   }
-  function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); recent.length=0; sess.length=0; st.hyperStacks=0; updateStats(); saveProfile(); }
+  function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); recent.length=0; sess.length=0;
+    st.hyperStacks=0; st.stakeTokens=0; st.adapt=1; st.okRun=0; updateStats(); saveProfile(); }
 
   // ---------- end-of-session summary ----------
   function endSession(){
@@ -482,22 +543,61 @@
     const n=sess.length, sp=meterSpan();
     const cnt=k=>sess.filter(r=>r.kind===k).length, pct=c=>Math.round(c/n*100);
     const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
-    const half=Math.ceil(n/2), m=mean(sess), m1=mean(sess.slice(0,half)), m2=mean(sess.slice(half));
+    const mabs=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>Math.abs(clamp(r.ms,-sp,sp))); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
+    const half=Math.ceil(n/2), m=mean(sess), m1=mean(sess.slice(0,half)), m2=mean(sess.slice(half)), err=mabs(sess);
     let run=0,best=0; sess.forEach(r=>{ const ok=r.kind==='great'||(cfg.merciless&&r.kind==='good');   // same rule the live streak uses
       run=ok?run+1:0; if(run>best)best=run; });
     const sgn=v=>v==null?'—':(Math.abs(v)<3?'on time':Math.round(Math.abs(v))+'ms '+(v>0?'late':'early'));
-    const e=computeEff();
+    const e=computeEff(), conv=sess.filter(r=>r.conv).length;
+    const key=baseKey(), prev=hist.filter(h=>h.key===key).pop();   // the last run on the same baseline and perks, so the comparison is like for like
     const rows=[['great',cnt('great')+' · '+pct(cnt('great'))+'%'],
                 ['good', cnt('good') +' · '+pct(cnt('good'))+'%'],
                 ['miss', cnt('miss') +' · '+pct(cnt('miss'))+'%'],
                 ['average error', sgn(m)],
                 ['drift', (m1==null||m2==null)?'—':(Math.abs(m2-m1)<4?'steady':sgn(m1)+' → '+sgn(m2))],
                 ['best streak', best]];
+    if (cfg.stake)    rows.push(['greats from Stake Out', conv]);
+    if (cfg.adaptive) rows.push(['ended at', Math.round(st.adapt*100)+'% of the baseline zone']);
+    if (prev)         rows.push(['vs your last '+esc(prev.name), vsTxt(prev,cnt('great')/n*100,err)]);
     $('sum-n').textContent=n+' checks · '+Math.round(e.revMs)+'ms rotation · great '+e.greatPct.toFixed(1)+'%';
     $('sum-rows').innerHTML=rows.map(r=>'<div class="sr"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
     $('summary').classList.remove('hidden');
+    hist.push({ t:Date.now(), key, name:sessName(), n, great:cnt('great'), good:cnt('good'), miss:cnt('miss'), conv,
+                err:err==null?0:err, bias:m==null?0:m, best, adapt:cfg.adaptive?st.adapt:1 });
+    if (hist.length>HISTN) hist.shift();
+    saveNow(); renderHistory();
   }
   function closeSummary(){ $('summary').classList.add('hidden'); }
+  function vsTxt(p,gp,err){ const dg=Math.round(gp-p.great/p.n*100), de=(err==null||!p.err)?null:Math.round(p.err-err);
+    return (dg>0?'+':'')+dg+'% great'+(de==null?'':(Math.abs(de)<2?' · same spread':' · '+Math.abs(de)+'ms '+(de>0?'tighter':'wider'))); }
+
+  // ---------- history ----------
+  // A run is only comparable with one set up the same way, so the key carries the baseline, the perks
+  // and whether the staircase was on. Everything else in the row is just there to be read.
+  const PERKS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless'];
+  const perkList=()=>PERKS.filter(k=>cfg[k]);
+  function baseKey(){ const p=activePreset();
+    return (p||('custom '+cfg.revMs+'/'+cfg.greatPct+'/'+cfg.goodPct))+'|'+perkList().join('+')+(cfg.adaptive?'|adaptive':''); }
+  function sessName(){ const p=activePreset(), k=perkList().length; return (p?PNAME[p]:'custom')+(k?' +'+k:''); }
+  function renderHistory(){
+    const n=hist.length, key=baseKey();
+    $('h-empty').style.display=n?'none':'block';
+    trend.style.display=n?'block':'none'; $('h-legend').style.display=n?'flex':'none';
+    $('hist-rows').innerHTML = hist.slice(-6).reverse().map(h=>{ const d=new Date(h.t);
+      return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+'</span>'+
+             '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>±'+Math.round(h.err)+'ms · '+h.n+'</span></div>'; }).join('');
+    drawTrend(key);
+  }
+  function drawTrend(key){
+    const w=TW,h=TH; tctx.clearRect(0,0,w,h); if(!hist.length)return;
+    tctx.strokeStyle=C.grid; tctx.lineWidth=1;
+    [25,50,75].forEach(p=>{ const y=Math.round(h-p/100*h)+0.5; tctx.beginPath();tctx.moveTo(0,y);tctx.lineTo(w,y);tctx.stroke(); });
+    const show=hist.slice(-24), bw=Math.min(15,w/show.length), pad=(w-show.length*bw)/2;
+    show.forEach((e,i)=>{ const bh=Math.max(1,clamp(e.great/e.n,0,1)*(h-3));
+      tctx.fillStyle = e.key===key ? C.great : 'rgba(255,255,255,0.15)';   // the runs you can actually compare with what is set up now
+      tctx.fillRect(pad+i*bw+bw*0.18,h-bh,Math.max(2,bw*0.64),bh); });
+  }
+  function clearHistory(){ if(!hist.length||confirm('Delete all '+hist.length+' saved runs?')){ hist.length=0; saveNow(); renderHistory(); } }
 
   // ---------- effective-value labels (show how perks modify baseline) ----------
   function effSpan(base,eff,unit){ return Math.abs(eff-base)>(unit==='ms'?1:0.05) ? `${base}${unit} <span class="d">→ ${unit==='ms'?Math.round(eff):eff.toFixed(1)}${unit}</span>` : `${base}${unit}`; }
@@ -508,14 +608,15 @@
     $('v-gap').innerHTML=cfg.merciless?`${cfg.gapMs}ms <span class="d">→ none, the chain never stops</span>`:(cfg.gapMs===0?'none':cfg.gapMs+' to '+(cfg.gapMs+Math.min(120,cfg.gapMs))+'ms'); }
 
   // ---------- profile ----------
-  const BOOLS=['unnerving','injured','hyper','coulro','doctor','lullaby','merciless','contrast','audio','showMs','showFps','menuOpen','openAppearance','openControls'];
+  const BOOLS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','adaptive','contrast','audio','showMs','showFps','menuOpen','openAppearance','openControls','openHistory'];
   const NUMS=['revMs','greatPct','goodPct','gapMs','dialR','posMin','posMax','spawnArea','blockPx','needlePx','needleLen','vol','sessN'];
   const KINDS=['great','good','miss'];
   function settingsObj(){ const o={hitBind:{...hitBind},startBind:{...startBind}}; NUMS.forEach(k=>o[k]=cfg[k]); BOOLS.forEach(k=>o[k]=cfg[k]); return o; }
   function statsObj(){ return { att:stats.att, great:stats.great, good:stats.good, miss:stats.miss, streak:stats.streak, best:stats.best, recent:recent.slice() }; }
+  function profileObj(){ return {v:PVER, settings:settingsObj(), stats:statsObj(), hist:hist.slice()}; }
   let saveT=0;
   function saveNow(){ if(saveT){clearTimeout(saveT);saveT=0;}
-    try{ localStorage.setItem(LSKEY,JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()})); }catch(e){} }
+    try{ localStorage.setItem(LSKEY,JSON.stringify(profileObj())); }catch(e){} }
   function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
@@ -532,8 +633,14 @@
     if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
       recent.length=0;
       if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
-        if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?r.ms:null, kind:r.kind}); }); }
-    setVol(); syncUI(); updateStats(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
+        if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?clamp(r.ms,-MSMAX,MSMAX):null, kind:r.kind, conv:!!r.conv}); }); }
+    if(Array.isArray(p.hist)){ hist.length=0;   // an imported file is not ours, so every field is rebuilt rather than trusted
+      const num=(v,d)=>(typeof v==='number'&&isFinite(v))?v:d, int=(v)=>Math.max(0,Math.round(num(v,0)));
+      p.hist.slice(-HISTN).forEach(h=>{ if(!h||typeof h!=='object'||int(h.n)<1)return;
+        hist.push({ t:int(h.t), key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),
+                    n:int(h.n), great:int(h.great), good:int(h.good), miss:int(h.miss), conv:int(h.conv),
+                    err:Math.abs(num(h.err,0)), bias:num(h.bias,0), best:int(h.best), adapt:clamp(num(h.adapt,1),ADAPTMIN,ADAPTMAX) }); }); }
+    setVol(); syncUI(); updateStats(); renderHistory(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
   function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
     hitBind={type:'key',code:'Space',name:'Space'}; startBind={type:'key',code:'Enter',name:'Enter'};
     setVol(); syncUI(); saveProfile(); }
@@ -580,35 +687,38 @@
     if(cfg.lullaby && sc==='special')  out.push('Hex: Huntress Lullaby silences repair and heal checks only.'+which);
     if(cfg.merciless && (sc==='heal'||sc==='special')) out.push('Merciless Storm happens on a generator.'+which);
     if(cfg.unnerving && e.goodPct<=0)  out.push('Unnerving Presence only shrinks the Good band, and this check has none.');
+    if(cfg.stake && e.goodPct<=0)      out.push('Stake Out spends a token to turn a Good into a Great, and this check has no Good band.');
     if(cfg.merciless && cfg.hyper)     out.push('Merciless Storm has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
     return out;
   }
   function syncWarn(){ const c=conflicts(), el=$('warn');
     el.innerHTML=c.map(t=>'<div>'+t+'</div>').join(''); el.style.display=c.length?'block':'none'; }
   function syncLengths(){ document.querySelectorAll('#lengths .chip').forEach(c=>c.classList.toggle('on', +c.dataset.n===cfg.sessN)); }
-  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
+  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-stake':'stake','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-adaptive':'adaptive','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
   function syncSpawnEnabled(){ $('r-spawn').disabled=!cfg.doctor; $('l-spawn').classList.toggle('off',!cfg.doctor); }   // the value is only read inside the Madness branches
   function syncBinds(){ $('hitname').textContent=hitBind.name;$('hitname2').textContent=hitBind.name;$('startname').textContent=startBind.name;$('startname2').textContent=startBind.name; }
   function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders();
     $('menu').classList.toggle('hidden',!cfg.menuOpen);
-    $('d-appearance').open=cfg.openAppearance; $('d-controls').open=cfg.openControls; }
+    $('d-appearance').open=cfg.openAppearance; $('d-controls').open=cfg.openControls; $('d-history').open=cfg.openHistory; }
   function setMenu(open){ cfg.menuOpen=open; $('menu').classList.toggle('hidden',!open);
     if(st.phase!=='active'){ st.ox=centreX(); }   // on a narrow window the dial slides clear of the panel
     saveProfile(); }
 
   // ---------- controls ----------
-  for(const id in CB)$(id).addEventListener('change',e=>{ cfg[CB[id]]=e.target.checked;
-    if(CB[id]==='hyper')st.hyperStacks=0; if(CB[id]==='doctor')syncSpawnEnabled();
-    updateEffLabels(); syncWarn(); updateStats(); saveProfile(); });
+  for(const id in CB)$(id).addEventListener('change',e=>{ const k=CB[id]; cfg[k]=e.target.checked;
+    if(k==='hyper')st.hyperStacks=0; if(k==='doctor')syncSpawnEnabled();
+    if(k==='stake'){ st.stakeTokens=0; st.stakeAt=now(); }   // the bank starts empty, the way it does when you spawn in
+    if(k==='adaptive'){ st.adapt=1; st.okRun=0; }
+    updateEffLabels(); syncWarn(); updateStats(); renderHistory(); saveProfile(); });   // perks are part of a run's identity, so the history highlight follows them
   function slider(id,key,fmtFn){ $(id).addEventListener('input',e=>{ cfg[key]=+e.target.value; fmtFn(); saveProfile(); }); }
   document.querySelectorAll('#presets .chip').forEach(c=>c.addEventListener('click',()=>{
-    Object.assign(cfg,PRESETS[c.dataset.p]); syncSliders(); drawMeter(); saveProfile(); }));
+    Object.assign(cfg,PRESETS[c.dataset.p]); syncSliders(); drawMeter(); renderHistory(); saveProfile(); }));
   document.querySelectorAll('#lengths .chip').forEach(c=>c.addEventListener('click',()=>{
     cfg.sessN=+c.dataset.n; sess.length=0;   // a new target means a new count, not a partial one
     syncLengths(); updateStats(); saveProfile(); }));
   $('sum-close').addEventListener('click',closeSummary);
   $('sum-again').addEventListener('click',()=>{ closeSummary(); toggleRun(); });
-  const effAndMeter=()=>{ updateEffLabels(); syncPresets(); syncWarn(); drawMeter(); };   // the histogram scale follows the rotation time and the zone sizes
+  const effAndMeter=()=>{ updateEffLabels(); syncPresets(); syncWarn(); drawMeter(); renderHistory(); };   // the histogram scale follows the rotation time and the zone sizes, and the history highlight follows the baseline
   slider('r-rev','revMs',effAndMeter);
   slider('r-great','greatPct',effAndMeter);
   slider('r-good','goodPct',effAndMeter);
@@ -631,10 +741,14 @@
   $('gear').addEventListener('click',()=>setMenu(!cfg.menuOpen));
   $('d-appearance').addEventListener('toggle',()=>{ cfg.openAppearance=$('d-appearance').open; saveProfile(); });
   $('d-controls').addEventListener('toggle',()=>{ cfg.openControls=$('d-controls').open; saveProfile(); });
+  $('d-history').addEventListener('toggle',()=>{ cfg.openHistory=$('d-history').open;
+    TW=fitCanvas(trend,tctx,MW,TH); renderHistory(); saveProfile(); });   // it had no width to measure while it was closed
+  $('btn-clearhist').addEventListener('click',clearHistory);
   function toggleRun(){ try{actx();}catch(e){}
     st.running=!st.running; $('btn-start').textContent=st.running?'Stop':'Start'; $('btn-start').classList.toggle('primary',!st.running);
-    if(st.running){ st.phase='idle'; st.hyperStacks=0; sess.length=0; closeSummary(); updateStats(); saveProfile(); }
-    else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.hitAng=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
+    if(st.running){ st.phase='idle'; st.hyperStacks=0; st.stakeTokens=0; st.stakeAt=now(); st.adapt=1; st.okRun=0;
+      sess.length=0; closeSummary(); updateStats(); saveProfile(); }   // every run starts from the same place: no tokens banked, baseline width
+    else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.arc=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
   $('btn-start').addEventListener('click',toggleRun);
   $('btn-reset').addEventListener('click',resetSession);
   $('btn-default').addEventListener('click',()=>{   // it sits next to Reset stats and wipes screenshot-calibrated values, so ask
@@ -642,19 +756,20 @@
   $('btn-hitkey').addEventListener('click',()=>{rebinding='hit';$('btn-hitkey').textContent='Press…';});
   $('btn-startkey').addEventListener('click',()=>{rebinding='start';$('btn-startkey').textContent='Press…';});
 
+  function fitCanvas(cv,ctx,fallbackW,h){ const dpr=window.devicePixelRatio||1, w=cv.clientWidth||fallbackW;   // a canvas inside a closed <details> measures 0, so fall back rather than draw into nothing
+    cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); return w; }
   function fit(){ const dpr=window.devicePixelRatio||1;   // back the canvas with real device pixels, then draw in CSS px
     VW=window.innerWidth; VH=window.innerHeight;
     dial.width=Math.round(VW*dpr); dial.height=Math.round(VH*dpr);
     dctx.setTransform(dpr,0,0,dpr,0,0);                   // resizing a canvas resets its state, so this must come after
-    MW=meter.clientWidth||300; MH=62;
-    meter.width=Math.round(MW*dpr); meter.height=Math.round(MH*dpr);
-    mctx.setTransform(dpr,0,0,dpr,0,0); drawMeter();
+    MW=fitCanvas(meter,mctx,MW,MH); TW=fitCanvas(trend,tctx,MW,TH);   // the trend shares the meter's column, so that is the right fallback width
+    drawMeter(); renderHistory();
     if(st.phase!=='active'){ st.ox=centreX(); st.oy=VH/2; }
     else { const R=cfg.dialR;   // a Madness check placed for the old size must not end up off-screen
       st.ox=clamp(st.ox,R,Math.max(R,VW-R)); st.oy=clamp(st.oy,R,Math.max(R,VH-R)); } }
   window.addEventListener('resize',fit);
   $('btn-fs').addEventListener('click',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({v:PVER,settings:settingsObj(),stats:statsObj()},null,2)],{type:'application/json'});
+  $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify(profileObj(),null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
   $('btn-import').addEventListener('click',()=>$('imp').click());
   $('imp').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
@@ -679,7 +794,8 @@
       else setBind(rebinding,{type:'key',code:e.code,name:keyName(e)}); e.preventDefault(); return; }
     if(e.code==='Escape'){
       if(!$('summary').classList.contains('hidden')){ closeSummary(); e.preventDefault(); return; }
-      if(cfg.menuOpen){ setMenu(false); if(document.activeElement)document.activeElement.blur(); e.preventDefault(); return; } }
+      const open=!cfg.menuOpen; setMenu(open);   // the same key brings it back, which is what you want once you have closed it mid-run
+      if(!open&&document.activeElement)document.activeElement.blur(); e.preventDefault(); return; }
     if(onControl())return;
     if(matchKey(startBind,e)){ e.preventDefault(); if(!e.repeat)toggleRun(); return; }
     if(matchKey(hitBind,e)){ e.preventDefault(); if(st.running&&!e.repeat)onPress(e.timeStamp); } });
@@ -688,6 +804,11 @@
     if(matchMouse(startBind,e)){ e.preventDefault(); toggleRun(); return; }
     if(matchMouse(hitBind,e)){ e.preventDefault(); if(st.running)onPress(e.timeStamp); } },true);
   ['mouseup','auxclick'].forEach(ev=>window.addEventListener(ev,e=>{ if(matchMouse(hitBind,e)||matchMouse(startBind,e))e.preventDefault(); },true));
+  // There is no keyboard on a phone, so the dial itself is the button. preventDefault also stops the
+  // synthetic mousedown, so a hit bound to Mouse L cannot fire twice off one tap.
+  window.addEventListener('touchstart',e=>{
+    if(overUI(e)||$('summary').contains(e.target)||!$('summary').classList.contains('hidden'))return;
+    e.preventDefault(); if(!st.running)toggleRun(); else onPress(e.timeStamp); },{passive:false});
   window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
 
   // drop focus after a POINTER interaction, so the hit key is never eaten by the widget you just clicked.
@@ -698,7 +819,7 @@
   // ---------- boot ----------
   fit();
   try{ const saved=localStorage.getItem(LSKEY); if(saved)applyProfile(JSON.parse(saved)); }catch(e){}
-  syncUI(); updateStats(); st.ox=centreX(); st.oy=VH/2;
+  syncUI(); updateStats(); renderHistory(); st.ox=centreX(); st.oy=VH/2;
   requestAnimationFrame(frame);
 })();
 </script>
