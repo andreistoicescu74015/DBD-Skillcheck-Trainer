@@ -1,74 +1,89 @@
 # DBD Skill Check Trainer
 
-A lightweight, browser-based trainer for the **skill check** timing minigame from *Dead by Daylight* — the spinning dial where you tap a key the instant the needle crosses the white zone to land a **Great**.
+A browser trainer for the skill check from *Dead by Daylight*: the dial with the sweeping needle, where you tap a key as the needle crosses the white zone and try to land the small bright band at its front for a Great.
 
-Everything lives in a **single self-contained HTML file**: no install, no build step, no dependencies, no network. Open it in a browser and start training. Your settings and stats save automatically.
+The whole thing is one HTML file. No install, no build step, no dependencies, no network calls. Open it in a browser and start training. Settings, stats and your run history save themselves.
 
-**▶ Play it now: [andreistoicescu74015.github.io/DBD-Skillcheck-Trainer](https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/)**
+Play it here: [andreistoicescu74015.github.io/DBD-Skillcheck-Trainer](https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/)
 
-> **Disclaimer** — This is an unofficial, fan-made practice tool. It is **not** affiliated with, endorsed by, or connected to Behaviour Interactive or *Dead by Daylight*. All sounds are **synthesized in the browser** (Web Audio API) — they are **not** the game's audio files. Zone sizes and timings are *calibrated approximations* based on community/wiki values, meant for building muscle memory rather than being a frame-accurate simulation.
+> Disclaimer. This is an unofficial fan-made practice tool. Behaviour Interactive is not involved with it and has not endorsed it. Every sound is synthesized in the browser with the Web Audio API, so none of the game's audio files are used here. Zone sizes and timings follow the community wiki values and are meant for building muscle memory, not for frame-accurate simulation.
 
 ## Quick start
 
-1. Open the [live demo](https://andreistoicescu74015.github.io/DBD-Skillcheck-Trainer/), or download `index.html` and open it in any modern browser (Chrome, Edge, Firefox).
-2. Press **Enter** to start.
-3. Press **Space** when the red line sweeps into the white zone — land it in the small, bright **Great** band at the front of the zone for a perfect hit.
-4. Click the ⚙ button (top-right) to open the menu and tweak perks, zone size/position, appearance, audio, and controls.
+1. Open the live version, or download `index.html` and open it in any modern browser.
+2. Press Enter to start.
+3. Press Space as the red needle enters the white zone. The bright band at the front of that zone is the Great.
+4. Open the panel with the gear button at the top right, or with Escape, to change anything below.
 
 ## Controls
 
-| Action            | Default   | Notes        |
-| ----------------- | --------- | ------------ |
-| Start / Stop      | **Enter** | Rebindable   |
-| Hit skill check   | **Space** | Rebindable   |
+| Action          | Default | Notes                                        |
+| --------------- | ------- | -------------------------------------------- |
+| Start / stop    | Enter   | Rebindable                                   |
+| Hit skill check | Space   | Rebindable                                   |
+| Open / close panel | Escape | Fixed                                       |
 
-Both actions can be rebound to any key **or mouse button**, including **M4 / M5** side buttons — handy for matching whatever you use in-game.
+Both actions take any key or mouse button, side buttons M4 and M5 included, so you can match what you use in game. On a touch screen there is no keyboard, so one tap starts the run and every tap after that is a hit.
 
-## Features
+## What it simulates
 
-**Gameplay**
-- Continuous practice loop so you can grind timing, with an optional gap between checks.
-- Authentic **Great / Good** zones: a bright **Great** band (perfect hit) at the leading edge of a wider **Good** band.
-- Random zone position on the dial (set by clock position), or pin it to a single spot.
+Five actions come as presets, with the wiki's tier III values for rotation time, Great size and Good size:
 
-**Perk & ability simulation** (toggle in the menu)
-- **Unnerving Presence** — shrinks the Good zone (−60%) for a brutally tight window.
-- **This Is Not Happening (Injured)** — grows *only* the Great zone (+30%).
-- **Hyperfocus** — speeds up the dial per stacked Great (+4% / stack, up to 6); a miss resets the stacks.
-- **Doctor · Madness** — skill checks can spin in **reverse** and appear at random spots on the screen.
-- **Hex: Huntress Lullaby** — removes the warning "appear" sound, so you react purely on sight.
+| Action           | Rotation | Great | Good |
+| ---------------- | -------- | ----- | ---- |
+| Repair           | 1100ms   | 3%    | 10%  |
+| Heal             | 1200ms   | 3%    | 12%  |
+| Decisive Strike  | 1100ms   | 7%    | 0%   |
+| Overcharge       | 1000ms   | 5%    | 0%   |
+| Snap Out of It   | 1200ms   | 12%   | 0%   |
 
-**Tunable baseline**
-- Rotation time, Great-zone size, Good-zone size.
-- Doctor spawn area: how far from centre random skill checks can appear.
+Overcharge is the difficult check, so it also stands in for Oppression. Rotation time, Great size, Good size, where on the dial the zone can appear and the pause between checks are all sliders, so any value the presets do not cover is a drag away.
 
-**Live performance tracking**
-- Recent **form**: rolling % Great and average error in milliseconds.
-- Running tallies: checks, greats, goods, misses, and best streak.
-- An **early/late meter** that visualises your timing bias — recent hits show taller and brighter, with a marker for your average offset.
-- Optional **±ms readout** in the centre of the dial after each hit.
+Eight perks and abilities can be toggled on top of that baseline. Only the part that changes the check itself is simulated: trigger odds, bonus progression and repair speed are left out.
 
-**Appearance**
-- Adjustable dial size, ring (block) thickness, and needle thickness.
-- High-contrast mode (green Great vs. white Good).
+| Toggle                | Effect here                                                                    |
+| --------------------- | ------------------------------------------------------------------------------ |
+| Unnerving Presence    | Good band shrinks by 60%, Great untouched                                       |
+| This Is Not Happening | Great band grows by 30%, Good untouched                                         |
+| Hyperfocus            | +4% dial speed per token, six tokens, a Great banks one and anything else spends them all |
+| Coulrophobia          | +50% dial speed, healing checks                                                 |
+| Stake Out             | One token every 15 seconds, four at most; a Good spends one and counts as a Great |
+| Doctor, Madness       | The sweep can run backwards and the dial appears anywhere in the spawn area      |
+| Hex: Huntress Lullaby | No warning sound when a check appears, so you react on sight                     |
+| Merciless Storm       | No Great zone at all, and the chain never pauses between checks                  |
 
-**Quality of life**
-- Synthesized audio with distinct appear / good / great / fail cues.
-- Profile auto-saves to the browser; **Export / Import** as JSON to move it between machines.
-- Fullscreen mode.
+When a combination cannot happen in a match, for instance Coulrophobia on a repair check, the panel says so instead of quietly simulating it.
+
+## Training tools
+
+Runs come in lengths of 20, 50 or 100 checks, or Free if you just want to grind. A finished run opens a card with the split between great, good and miss, your average error, whether you drifted between the first and second half, your best streak, and how it compares with your last run set up the same way.
+
+Those cards are kept. The History section holds the last 60 runs as a bar per run, with the ones matching your current baseline and perks picked out in green, so a Repair run is never compared against a Snap Out of It run.
+
+Adaptive difficulty tightens the whole success zone after three greats in a row and widens it after anything else. Leave it on and it settles at the tightest window you can hold, which is a harder target than any fixed preset.
+
+While a run is going you get: a rolling percentage over the last 60 checks with your spread and whether you lean early or late, an early/late meter with the Great window drawn on it and a marker for your average offset, an arc on the dial showing how far your press landed from the middle of the zone, and the error in milliseconds in the middle of the dial.
+
+## Appearance and sound
+
+Dial radius, zone thickness, needle thickness and needle length are all adjustable, which is how you match the size the game draws on your monitor. High-contrast mode paints the Great band green against a white Good band. The FPS counter is optional.
+
+Audio is synthesized: a cue when the check appears, and distinct good, great and fail sounds. A check that ran out sounds duller than a mistimed press, so you can tell them apart without looking. Release the volume slider to hear a Great at that level.
 
 ## How it works
 
-- A single static HTML file: vanilla JavaScript with the **Canvas 2D** API for rendering and the **Web Audio API** for sound.
-- ~400 lines, zero dependencies, no build tooling.
-- State persists via `localStorage` — settings and stats save on every change and after every hit.
+One static HTML file: vanilla JavaScript, the Canvas 2D API for the dial and the meters, the Web Audio API for sound. Around 590 lines of script, no dependencies, no build tooling.
+
+The profile lives in `localStorage` and covers settings, lifetime stats and run history. Export writes all three to a JSON file and Import reads one back, which is how you move a profile between machines. Reset settings restores the defaults and leaves your stats and history alone.
 
 ## Tips
 
-- Keep high-contrast **off** to mirror the real game; turn it **on** when you want to clearly see where Great ends.
-- Watch the early/late meter: if the average marker sits to the left you're hitting **early** (react slightly later), and vice-versa.
-- Train with **Unnerving Presence** on to tighten the window — the real game then feels generous.
+Leave high-contrast off to mirror the game, and turn it on when you want to see exactly where Great ends.
+
+Watch the marker on the early/late meter. Sitting left of centre means you are hitting early, so react a little later.
+
+Train with Unnerving Presence on, or with adaptive difficulty, and the real game feels generous afterwards.
 
 ## License
 
-Released under the **MIT License** — see [`LICENSE`](LICENSE) for the full text. © 2026 Andrei Stoicescu.
+MIT, see [`LICENSE`](LICENSE). Copyright 2026 Andrei Stoicescu.
