@@ -51,7 +51,7 @@ Nine perks and abilities can be toggled on top of that baseline. Only the part t
 | Doctor, Madness       | The sweep can run backwards and the dial appears anywhere in the spawn area      |
 | Hex: Huntress Lullaby | No warning sound when a check appears, so you react on sight                     |
 | Merciless Storm       | No Great zone at all, and the chain never pauses between checks                  |
-| No Quarter            | The chain never pauses either, but the Great zone stays; healing checks           |
+| No Quarter            | The same chained check, on a self-heal instead of a generator                     |
 
 When a combination cannot happen in a match, for instance Coulrophobia on a repair check, the panel says so instead of quietly simulating it.
 

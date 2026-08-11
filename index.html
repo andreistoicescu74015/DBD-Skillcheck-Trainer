@@ -151,7 +151,7 @@
     <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse + random spawn</span></label>
     <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
     <label class="sw"><input type="checkbox" id="c-merciless" /><span class="track"></span><span>Merciless Storm</span><span class="eff">continuous · no great</span></label>
-    <label class="sw"><input type="checkbox" id="c-noquarter" /><span class="track"></span><span>No Quarter</span><span class="eff">continuous · self-heal</span></label>
+    <label class="sw"><input type="checkbox" id="c-noquarter" /><span class="track"></span><span>No Quarter</span><span class="eff">the same, on a self-heal</span></label>
     <div class="note">Only what changes the check itself is simulated. Trigger odds, bonus progression, status effects and repair speed are left out.</div>
     <div class="warn" id="warn"></div>
 
@@ -310,21 +310,21 @@
       else {noise(0.42,0.6,850);tone(82,0.38,0.26,'sine',0,55);tone(120,0.3,0.16,'sawtooth',0.01);} }} };
 
   // ---------- skill check ----------
+  // The same chained check, on two different actions: Merciless Storm on a generator, No Quarter from 75%
+  // of a self-heal. Back to back with no pause, and Good is all you get, so both run through this one flag.
+  const chained=()=>cfg.merciless||cfg.noquarter;
   function computeEff(){
     let speed=1;                                         // pointer-rotation modifiers are additive on the same stat
     if (cfg.hyper)  speed += 0.04*st.hyperStacks;        // Hyperfocus +4% per token
     if (cfg.coulro) speed += 0.50;                       // Coulrophobia +50% (healing checks in game)
     const revMs = cfg.revMs/speed;
     let great = cfg.greatPct * (cfg.injured?1.30:1);     // This Is Not Happening grows ONLY great
-    if (cfg.merciless) great = 0;                        // Merciless Storm: no Great zone at all
+    if (chained()) great = 0;                            // a chained check has no Great zone at all
     const good  = cfg.goodPct  * (cfg.unnerving?0.4:1);  // Unnerving −60% shrinks ONLY good
     const a = cfg.adaptive ? st.adapt : 1;               // the staircase scales the whole success zone, so the check keeps its shape and only its width moves
     const total = (great + good) * a;                    // white success zone = great (front) + good (after)
     return { revMs, greatDeg:great*a/100*360, goodDeg:total/100*360, greatPct:great*a, goodPct:good*a };
   }
-  // Two perks run checks back to back with no pause: Merciless Storm on a generator, No Quarter from 75%
-  // of a self-heal. Only Merciless Storm drops the Great zone, so No Quarter keeps the heal zones it started with.
-  const chained=()=>cfg.merciless||cfg.noquarter;
   function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
     if(ok){ if(++st.okRun>=ADAPTRUN){ st.okRun=0; st.adapt=clamp(st.adapt*ADAPTDN,ADAPTMIN,ADAPTMAX); } }
     else { st.okRun=0; st.adapt=clamp(st.adapt*ADAPTUP,ADAPTMIN,ADAPTMAX); } }
@@ -357,7 +357,7 @@
     if (kind==='great'){ stats.great++; stats.streak++; stats.best=Math.max(stats.best,stats.streak);
       if(cfg.hyper)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); SND.great(); }
     else {
-      if(kind==='good'){ stats.good++; if(cfg.merciless){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
+      if(kind==='good'){ stats.good++; if(chained()){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
         if(cfg.hyper){ if(st.eff.greatDeg<=0)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); else st.hyperStacks=0; } SND.good(); }   // no Great zone → Hyperfocus builds on Good instead
       else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; st.failAt=now(); SND.fail(!pressed); } }   // failAt drives the ring flash, the only visual a timed-out miss gets
     adaptStep(kind==='great' || (st.eff.greatDeg<=0 && kind==='good'));   // same bar the streak uses: a great, or a good where no great exists
@@ -569,7 +569,7 @@
     const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const mabs=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>Math.abs(clamp(r.ms,-sp,sp))); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const half=Math.ceil(n/2), m=mean(sess), m1=mean(sess.slice(0,half)), m2=mean(sess.slice(half)), err=mabs(sess);
-    let run=0,best=0; sess.forEach(r=>{ const ok=r.kind==='great'||(cfg.merciless&&r.kind==='good');   // same rule the live streak uses
+    let run=0,best=0; sess.forEach(r=>{ const ok=r.kind==='great'||(chained()&&r.kind==='good');   // same rule the live streak uses
       run=ok?run+1:0; if(run>best)best=run; });
     const sgn=v=>v==null?'—':(Math.abs(v)<3?'on time':Math.round(Math.abs(v))+'ms '+(v>0?'late':'early'));
     const e=computeEff(), conv=sess.filter(r=>r.conv).length;
@@ -721,9 +721,10 @@
     if(cfg.merciless && (sc==='heal'||sc==='special')) out.push('Merciless Storm happens on a generator.'+which);
     if(cfg.noquarter && (sc==='repair'||sc==='special')) out.push('No Quarter only chains checks while you heal yourself.'+which);
     if(cfg.unnerving && e.goodPct<=0)  out.push('Unnerving Presence only shrinks the Good band, and this check has none.');
+    if(cfg.injured && e.greatPct<=0)   out.push('This Is Not Happening only grows the Great zone, and this check has none.');
     if(cfg.stake && e.goodPct<=0)      out.push('Stake Out spends a token to turn a Good into a Great, and this check has no Good band.');
-    if(cfg.merciless && cfg.hyper)     out.push('Merciless Storm has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
-    if(cfg.merciless && cfg.noquarter) out.push('Merciless Storm is a generator check and No Quarter a self-heal, so no check is ever under both. With both on you are training Merciless Storm, because it is the one that drops the Great zone.');
+    if(chained() && cfg.hyper)         out.push('A chained check has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    if(cfg.merciless && cfg.noquarter) out.push('Merciless Storm is a generator check and No Quarter a self-heal, so no check is ever under both. Leave on the one your baseline matches.');
     return out;
   }
   function syncWarn(){ const c=conflicts(), el=$('warn');
