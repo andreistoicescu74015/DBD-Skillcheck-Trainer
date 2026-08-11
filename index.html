@@ -248,8 +248,9 @@
   // Colours the canvas shares with the panel live in :root and are read from there, so editing
   // the stylesheet restyles the dial and the meter too. Only dial-specific hues stay literal here.
   const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const C={ great:cssv('--great'), miss:cssv('--miss'), accent:cssv('--accent'),
+  const C={ great:cssv('--great'), miss:cssv('--miss'), accent:cssv('--accent'), warn:cssv('--warn'),
             zone:cssv('--zone'), zoneDim:cssv('--zone-dim'), grid:cssv('--grid'), idle:cssv('--idle') };
+  const NARROW=window.matchMedia('(max-width:430px)');   // the width where the panel stops sharing the screen with the dial and covers it instead
   const rgba=(hex,a)=>{ const n=parseInt(hex.slice(1),16); return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')'; };
 
   const THEMES = {
@@ -399,32 +400,27 @@
 
   // ---------- render ----------
   function render(){
-    const w=VW,h=VH,R=cfg.dialR,k=R/DEFAULTS.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ri=R-bh/2,Ro=R+bh/2;   // k = scale relative to the default dial → everything scales with dial size
+    const w=VW,h=VH,R=cfg.dialR,k=R/DEFAULTS.dialR,cx=st.ox,cy=st.oy,bh=Math.max(2,Math.min(cfg.blockPx*k,R*1.4)),T=theme(),Ro=R+bh/2;   // k = scale relative to the default dial → everything scales with dial size
     dctx.clearRect(0,0,w,h);
     if(cfg.showFps){ dctx.save(); dctx.fillStyle=rgba(C.accent,0.92); dctx.font='12px Segoe UI'; dctx.textAlign='left'; dctx.textBaseline='top'; dctx.fillText(Math.round(st.fps||0)+' fps',12,12); dctx.restore(); }
-    if (st.blank) return;   // 0% zone while running → nothing on screen
+    if (st.blank){   // both zones at 0%: an empty screen with no explanation reads as a broken app
+      ring(cx,cy,R,T.ring,0,0);
+      dctx.save(); dctx.fillStyle=C.warn; dctx.font='15px Segoe UI'; dctx.textAlign='center';
+      dctx.fillText('Great and Good are both 0%, so there is no zone to hit',cx,cy+R+34); dctx.restore();
+      return;
+    }
     if (st.phase==='active'||st.phase==='resolved'){
-      dctx.save();
-      if (st.phase==='resolved') dctx.globalAlpha=0.45;   // a check that is over must not read as a live one
-      const zs=st.zoneStart, zg=zs+st.spin*st.eff.greatDeg, zw=zs+st.spin*st.eff.goodDeg;
-      const gs=Math.min(zs,zw), we=Math.max(zs,zw);
-      if(st.eff.goodDeg>0){   // success zone at 0% → draw nothing (fully invisible)
-      ring(cx,cy,R,T.ring,gs,we);
-      annulus(cx,cy,Ri,Ro,gs,we,T.good,'stroke');
-      annulus(cx,cy,Ri,Ro,Math.min(zs,zg),Math.max(zs,zg),T.great,'fill',T.glow);
-      const na=(st.needle-90)*D2R, ux=Math.cos(na), uy=Math.sin(na), half=cfg.needleLen*k/2;
-      const cxr=cx+ux*R, cyr=cy+uy*R;   // super-flat oval (→ line as it thins), centred on the ring; scales with k
-      const ng=dctx.createLinearGradient(cxr-ux*half,cyr-uy*half,cxr+ux*half,cyr+uy*half);   // 0.5 stop = ring, always brightest there
-      ng.addColorStop(0,'rgba(190,20,20,0.35)'); ng.addColorStop(0.5,T.needle); ng.addColorStop(1,'rgba(215,30,30,0.75)');
-      dctx.save(); dctx.shadowColor=T.needle; dctx.shadowBlur=6*k; dctx.beginPath();
-      dctx.ellipse(cxr,cyr,half,Math.max(0.4,cfg.needlePx*k/2),na,0,TAU);
-      dctx.fillStyle=ng; dctx.fill(); dctx.restore();
-      }
-      dctx.restore();
+      if(st.eff.goodDeg>0)   // success zone at 0% → draw nothing (fully invisible)
+        drawCheck(cx,cy,R,k,bh,st.zoneStart,st.eff.greatDeg,st.eff.goodDeg,st.needle,st.spin,
+                  st.phase==='resolved'?0.45:1);   // a check that is over must not read as a live one
     } else {
-      ring(st.ox||w/2, st.oy||h/2, R, T.ring, 0, 0);
+      const e=computeEff();   // a still example of the check you have configured, so the idle screen shows what you are training and you can size the dial without starting
+      if(!st.running && e.goodDeg>0){
+        const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
+        drawCheck(cx,cy,R,k,bh,Math.min((lo+hi)/2,Math.max(0,360-e.goodDeg)),e.greatDeg,e.goodDeg,0,1,0.5);
+      } else ring(cx,cy,R,T.ring,0,0);
       if(!st.running){ dctx.fillStyle=C.idle; dctx.font='15px Segoe UI'; dctx.textAlign='center';
-        dctx.fillText('Press '+startBind.name+' to start',(st.ox||w/2),(st.oy||h/2)+R+34); }
+        dctx.fillText('Press '+startBind.name+' to start',cx,cy+R+34); }   // the preview needle points up, so this needs no clearance
     }
     const A=st.arc;   // the error as a distance, drawn against the zone you were aiming at. From a snapshot, so a Merciless chain gets it too instead of being the one mode with no feedback
     if (A && A.wd>0 && (st.phase==='resolved' || now()-A.at<ARCMS)){
@@ -441,10 +437,12 @@
       dctx.restore();
     }
     if (st.running){
-      let below=cy+R+Math.max(18,15*k);
+      const fs=Math.round(11*Math.min(Math.max(k,1),2));
+      let below=cy+R+needleDrop(k)+fs+4;   // clear of the needle: at 6 o'clock it used to run straight through this line
       const pn=activePreset();   // what you are training and how far in, so the panel can stay shut
-      const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:''].filter(Boolean).join('   ·   ');
-      if (label){ dctx.save(); dctx.fillStyle=C.idle; dctx.font=Math.round(11*Math.min(Math.max(k,1),2))+'px Segoe UI';
+      const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:'',
+                   cfg.adaptive?Math.round(st.adapt*100)+'% zone':''].filter(Boolean).join('   ·   ');   // the staircase moves the zone mid-run, and the panel that says so is usually shut
+      if (label){ dctx.save(); dctx.fillStyle=C.idle; dctx.font=fs+'px Segoe UI';
         dctx.textAlign='center'; dctx.fillText(label,cx,below); dctx.restore(); below+=Math.max(15,12*k); }
       if (cfg.hyper){ pipRow(cx,below,MAXHYPER,st.hyperStacks,C.accent,k); below+=Math.max(11,9*k); }   // Hyperfocus tokens; they changed the speed by up to 24% with nothing on screen to say so
       if (cfg.stake) pipRow(cx,below,MAXSTAKE,st.stakeTokens,C.great,k);   // Stake Out tokens, green because each one turns a Good into a Great
@@ -472,6 +470,25 @@
     dctx.fillText('spawn area', cx, y>20?y-8:y+18);
     dctx.restore();
   }
+  // One check: ring, success band, great band and needle. The live check, the resolved one and the
+  // idle preview are the same drawing at different alphas, so they cannot drift apart.
+  function drawCheck(cx,cy,R,k,bh,zs,greatDeg,goodDeg,needle,spin,alpha){
+    const T=theme(), Ri=R-bh/2, Ro=R+bh/2;
+    const zg=zs+spin*greatDeg, zw=zs+spin*goodDeg, gs=Math.min(zs,zw), we=Math.max(zs,zw);
+    dctx.save(); dctx.globalAlpha=alpha;
+    ring(cx,cy,R,T.ring,gs,we);
+    annulus(cx,cy,Ri,Ro,gs,we,T.good,'stroke');
+    annulus(cx,cy,Ri,Ro,Math.min(zs,zg),Math.max(zs,zg),T.great,'fill',T.glow);
+    const na=(needle-90)*D2R, ux=Math.cos(na), uy=Math.sin(na), half=needleDrop(k);
+    const cxr=cx+ux*R, cyr=cy+uy*R;   // super-flat oval (→ line as it thins), centred on the ring; scales with k
+    const ng=dctx.createLinearGradient(cxr-ux*half,cyr-uy*half,cxr+ux*half,cyr+uy*half);   // 0.5 stop = ring, always brightest there
+    ng.addColorStop(0,'rgba(190,20,20,0.35)'); ng.addColorStop(0.5,T.needle); ng.addColorStop(1,'rgba(215,30,30,0.75)');
+    dctx.save(); dctx.shadowColor=T.needle; dctx.shadowBlur=6*k; dctx.beginPath();
+    dctx.ellipse(cxr,cyr,half,Math.max(0.4,cfg.needlePx*k/2),na,0,TAU);
+    dctx.fillStyle=ng; dctx.fill(); dctx.restore();
+    dctx.restore();
+  }
+  const needleDrop=k=>cfg.needleLen*k/2;   // the needle is centred on the ring, so it hangs this far past it, and anything drawn under the dial has to clear it
   function pipRow(cx,y,total,filled,color,k){ const pr=Math.max(2,2.2*k), pg=pr*3.2, x0=cx-(total-1)*pg/2;
     for(let i=0;i<total;i++){ dctx.beginPath(); dctx.arc(x0+i*pg,y,pr,0,TAU);
       dctx.fillStyle = i<filled ? color : 'rgba(255,255,255,0.13)'; dctx.fill(); } }
@@ -549,7 +566,7 @@
       run=ok?run+1:0; if(run>best)best=run; });
     const sgn=v=>v==null?'—':(Math.abs(v)<3?'on time':Math.round(Math.abs(v))+'ms '+(v>0?'late':'early'));
     const e=computeEff(), conv=sess.filter(r=>r.conv).length;
-    const key=baseKey(), prev=hist.filter(h=>h.key===key).pop();   // the last run on the same baseline and perks, so the comparison is like for like
+    const key=st.runKey||baseKey(), prev=hist.filter(h=>h.key===key).pop();   // the last run on the same baseline and perks, so the comparison is like for like
     const rows=[['great',cnt('great')+' · '+pct(cnt('great'))+'%'],
                 ['good', cnt('good') +' · '+pct(cnt('good'))+'%'],
                 ['miss', cnt('miss') +' · '+pct(cnt('miss'))+'%'],
@@ -562,7 +579,7 @@
     $('sum-n').textContent=n+' checks · '+Math.round(e.revMs)+'ms rotation · great '+e.greatPct.toFixed(1)+'%';
     $('sum-rows').innerHTML=rows.map(r=>'<div class="sr"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
     $('summary').classList.remove('hidden');
-    hist.push({ t:Date.now(), key, name:sessName(), n, great:cnt('great'), good:cnt('good'), miss:cnt('miss'), conv,
+    hist.push({ t:Date.now(), key, name:st.runName||sessName(), n, great:cnt('great'), good:cnt('good'), miss:cnt('miss'), conv,
                 err:err==null?0:err, bias:m==null?0:m, best, adapt:cfg.adaptive?st.adapt:1 });
     if (hist.length>HISTN) hist.shift();
     saveNow(); renderHistory();
@@ -589,10 +606,15 @@
     drawTrend(key);
   }
   function drawTrend(key){
-    const w=TW,h=TH; tctx.clearRect(0,0,w,h); if(!hist.length)return;
-    tctx.strokeStyle=C.grid; tctx.lineWidth=1;
-    [25,50,75].forEach(p=>{ const y=Math.round(h-p/100*h)+0.5; tctx.beginPath();tctx.moveTo(0,y);tctx.lineTo(w,y);tctx.stroke(); });
-    const show=hist.slice(-24), bw=Math.min(15,w/show.length), pad=(w-show.length*bw)/2;
+    const w=TW,h=TH,G=30,pw=Math.max(20,w-G-4); tctx.clearRect(0,0,w,h); if(!hist.length)return;
+    tctx.save(); tctx.font='9px Segoe UI'; tctx.textAlign='right'; tctx.fillStyle=C.idle;   // a bar chart with no scale cannot be read: 55% and 70% look the same
+    tctx.textBaseline='top';    tctx.fillText('100%',G-6,1);
+    tctx.textBaseline='middle'; tctx.fillText('50%',G-6,h/2); tctx.restore();
+    tctx.lineWidth=1;
+    [25,50,75].forEach(p=>{ const y=Math.round(h-p/100*h)+0.5;
+      tctx.strokeStyle = p===50?'rgba(255,255,255,0.13)':C.grid;   // the halfway line carries the reading, so it is the one you can see
+      tctx.beginPath();tctx.moveTo(G,y);tctx.lineTo(w,y);tctx.stroke(); });
+    const show=hist.slice(-24), bw=Math.min(15,pw/show.length), pad=G+(pw-show.length*bw)/2;
     show.forEach((e,i)=>{ const bh=Math.max(1,clamp(e.great/e.n,0,1)*(h-3));
       tctx.fillStyle = e.key===key ? C.great : 'rgba(255,255,255,0.15)';   // the runs you can actually compare with what is set up now
       tctx.fillRect(pad+i*bw+bw*0.18,h-bh,Math.max(2,bw*0.64),bh); });
@@ -747,6 +769,8 @@
   function toggleRun(){ try{actx();}catch(e){}
     st.running=!st.running; $('btn-start').textContent=st.running?'Stop':'Start'; $('btn-start').classList.toggle('primary',!st.running);
     if(st.running){ st.phase='idle'; st.hyperStacks=0; st.stakeTokens=0; st.stakeAt=now(); st.adapt=1; st.okRun=0;
+      st.runKey=baseKey(); st.runName=sessName();   // a run belongs to the setup it started on, not to whatever you switched to at check 40
+      if(NARROW.matches) setMenu(false);            // on a phone the panel covers the dial, so Start would look like it did nothing
       sess.length=0; closeSummary(); updateStats(); saveProfile(); }   // every run starts from the same place: no tokens banked, baseline width
     else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.arc=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
   $('btn-start').addEventListener('click',toggleRun);
