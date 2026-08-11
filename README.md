@@ -39,7 +39,7 @@ Five actions come as presets, with the wiki's tier III values for rotation time,
 
 Overcharge is the difficult check, so it also stands in for Oppression. Rotation time, Great size, Good size, where on the dial the zone can appear and the pause between checks are all sliders, so any value the presets do not cover is a drag away.
 
-Eight perks and abilities can be toggled on top of that baseline. Only the part that changes the check itself is simulated: trigger odds, bonus progression and repair speed are left out.
+Nine perks and abilities can be toggled on top of that baseline. Only the part that changes the check itself is simulated: trigger odds, bonus progression, status effects and repair speed are left out.
 
 | Toggle                | Effect here                                                                    |
 | --------------------- | ------------------------------------------------------------------------------ |
@@ -51,6 +51,7 @@ Eight perks and abilities can be toggled on top of that baseline. Only the part 
 | Doctor, Madness       | The sweep can run backwards and the dial appears anywhere in the spawn area      |
 | Hex: Huntress Lullaby | No warning sound when a check appears, so you react on sight                     |
 | Merciless Storm       | No Great zone at all, and the chain never pauses between checks                  |
+| No Quarter            | The chain never pauses either, but the Great zone stays; healing checks           |
 
 When a combination cannot happen in a match, for instance Coulrophobia on a repair check, the panel says so instead of quietly simulating it.
 

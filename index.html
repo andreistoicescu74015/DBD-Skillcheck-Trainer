@@ -151,7 +151,8 @@
     <label class="sw"><input type="checkbox" id="c-doctor" /><span class="track"></span><span>Doctor · Madness</span><span class="eff">reverse + random spawn</span></label>
     <label class="sw"><input type="checkbox" id="c-lullaby" /><span class="track"></span><span>Hex: Huntress Lullaby</span><span class="eff">no warning sound</span></label>
     <label class="sw"><input type="checkbox" id="c-merciless" /><span class="track"></span><span>Merciless Storm</span><span class="eff">continuous · no great</span></label>
-    <div class="note">Only what changes the check itself is simulated. Trigger odds, bonus progression and repair speed are left out.</div>
+    <label class="sw"><input type="checkbox" id="c-noquarter" /><span class="track"></span><span>No Quarter</span><span class="eff">continuous · self-heal</span></label>
+    <div class="note">Only what changes the check itself is simulated. Trigger odds, bonus progression, status effects and repair speed are left out.</div>
     <div class="warn" id="warn"></div>
 
     <h2>Session</h2>
@@ -262,7 +263,7 @@
   };
   const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:60, posMin:120, posMax:320, spawnArea:0.5,
     // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
-    blockPx:7, needlePx:4, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
+    blockPx:7, needlePx:4, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, noquarter:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
     menuOpen:true, openAppearance:false, openControls:false, openHistory:false };   // panel and section state, so the layout you left is the one you come back to
   const RANGE = { revMs:[500,2000], greatPct:[0,12], goodPct:[0,30], gapMs:[0,1200], dialR:[30,260], posMin:[90,330],   // mirrors the slider bounds; imported profiles are clamped to these
                   posMax:[90,330], spawnArea:[0,1], blockPx:[1,40], needlePx:[1,30], needleLen:[10,160], vol:[0,1], sessN:[0,500] };
@@ -321,6 +322,9 @@
     const total = (great + good) * a;                    // white success zone = great (front) + good (after)
     return { revMs, greatDeg:great*a/100*360, goodDeg:total/100*360, greatPct:great*a, goodPct:good*a };
   }
+  // Two perks run checks back to back with no pause: Merciless Storm on a generator, No Quarter from 75%
+  // of a self-heal. Only Merciless Storm drops the Great zone, so No Quarter keeps the heal zones it started with.
+  const chained=()=>cfg.merciless||cfg.noquarter;
   function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
     if(ok){ if(++st.okRun>=ADAPTRUN){ st.okRun=0; st.adapt=clamp(st.adapt*ADAPTDN,ADAPTMIN,ADAPTMAX); } }
     else { st.okRun=0; st.adapt=clamp(st.adapt*ADAPTUP,ADAPTMIN,ADAPTMAX); } }
@@ -360,11 +364,11 @@
     if (cfg.hyper||cfg.adaptive) updateEffLabels();
     recent.push({ms:pressed?signedMs:null, kind, conv}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
     if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind, conv});   // only a bounded run needs a transcript; Free mode would grow it forever
-    // the feedback arc is drawn from a snapshot: under Merciless Storm the live values below are overwritten before it ever gets drawn
+    // the feedback arc is drawn from a snapshot: in a chain the live values below are overwritten before it ever gets drawn
     st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
     if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
     updateStats(); saveProfile();
-    if (cfg.merciless){   // Merciless Storm: continue from the retained needle angle, on ANY end (success OR fail)
+    if (chained()){   // the chain continues from the retained needle angle, on ANY end (success OR fail)
       const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
@@ -594,7 +598,7 @@
   // ---------- history ----------
   // A run is only comparable with one set up the same way, so the key carries the baseline, the perks
   // and whether the staircase was on. Everything else in the row is just there to be read.
-  const PERKS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless'];
+  const PERKS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','noquarter'];
   const perkList=()=>PERKS.filter(k=>cfg[k]);
   function baseKey(){ const p=activePreset();
     return (p||('custom '+cfg.revMs+'/'+cfg.greatPct+'/'+cfg.goodPct))+'|'+perkList().join('+')+(cfg.adaptive?'|adaptive':''); }
@@ -634,10 +638,10 @@
     $('v-rev').innerHTML=effSpan(cfg.revMs,e.revMs,'ms');
     $('v-great').innerHTML=effSpan(cfg.greatPct,e.greatPct,'%');
     $('v-good').innerHTML=effSpan(cfg.goodPct,e.goodPct,'%');
-    $('v-gap').innerHTML=cfg.merciless?`${cfg.gapMs}ms <span class="d">→ none, the chain never stops</span>`:(cfg.gapMs===0?'none':cfg.gapMs+' to '+(cfg.gapMs+Math.min(120,cfg.gapMs))+'ms'); }
+    $('v-gap').innerHTML=chained()?`${cfg.gapMs}ms <span class="d">→ none, the chain never stops</span>`:(cfg.gapMs===0?'none':cfg.gapMs+' to '+(cfg.gapMs+Math.min(120,cfg.gapMs))+'ms'); }
 
   // ---------- profile ----------
-  const BOOLS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','adaptive','contrast','audio','showMs','showFps','menuOpen','openAppearance','openControls','openHistory'];
+  const BOOLS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','noquarter','adaptive','contrast','audio','showMs','showFps','menuOpen','openAppearance','openControls','openHistory'];
   const NUMS=['revMs','greatPct','goodPct','gapMs','dialR','posMin','posMax','spawnArea','blockPx','needlePx','needleLen','vol','sessN'];
   const KINDS=['great','good','miss'];
   function settingsObj(){ const o={hitBind:{...hitBind},startBind:{...startBind}}; NUMS.forEach(k=>o[k]=cfg[k]); BOOLS.forEach(k=>o[k]=cfg[k]); return o; }
@@ -697,7 +701,7 @@
 
   // Perk scopes, tier III, from the wiki: Unnerving, This Is Not Happening and Huntress Lullaby
   // apply to repairing and healing only; Coulrophobia to healing only; Hyperfocus banks tokens
-  // while repairing or healing; Merciless Storm happens on a generator.
+  // while repairing or healing; Merciless Storm happens on a generator and No Quarter on a self-heal.
   const PNAME={repair:'Repair',heal:'Heal',ds:'Decisive Strike',oc:'Overcharge',snap:'Snap Out of It'};
   // Only repairing and healing produce a Good band, so a great-only baseline is one of the special
   // checks even with no preset selected. That keeps the scope notes alive for hand-tuned values,
@@ -715,15 +719,17 @@
     if(cfg.injured && sc==='special')  out.push('This Is Not Happening grows the Great zone on repair and heal checks only.'+which);
     if(cfg.lullaby && sc==='special')  out.push('Hex: Huntress Lullaby silences repair and heal checks only.'+which);
     if(cfg.merciless && (sc==='heal'||sc==='special')) out.push('Merciless Storm happens on a generator.'+which);
+    if(cfg.noquarter && (sc==='repair'||sc==='special')) out.push('No Quarter only chains checks while you heal yourself.'+which);
     if(cfg.unnerving && e.goodPct<=0)  out.push('Unnerving Presence only shrinks the Good band, and this check has none.');
     if(cfg.stake && e.goodPct<=0)      out.push('Stake Out spends a token to turn a Good into a Great, and this check has no Good band.');
     if(cfg.merciless && cfg.hyper)     out.push('Merciless Storm has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    if(cfg.merciless && cfg.noquarter) out.push('Merciless Storm is a generator check and No Quarter a self-heal, so no check is ever under both. With both on you are training Merciless Storm, because it is the one that drops the Great zone.');
     return out;
   }
   function syncWarn(){ const c=conflicts(), el=$('warn');
     el.innerHTML=c.map(t=>'<div>'+t+'</div>').join(''); el.style.display=c.length?'block':'none'; }
   function syncLengths(){ document.querySelectorAll('#lengths .chip').forEach(c=>c.classList.toggle('on', +c.dataset.n===cfg.sessN)); }
-  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-stake':'stake','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-adaptive':'adaptive','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
+  const CB={ 'c-unnerving':'unnerving','c-injured':'injured','c-hyper':'hyper','c-coulro':'coulro','c-stake':'stake','c-doctor':'doctor','c-lullaby':'lullaby','c-merciless':'merciless','c-noquarter':'noquarter','c-adaptive':'adaptive','c-contrast':'contrast','c-audio':'audio','c-showms':'showMs','c-showfps':'showFps' };
   function syncSpawnEnabled(){ $('r-spawn').disabled=!cfg.doctor; $('l-spawn').classList.toggle('off',!cfg.doctor); }   // the value is only read inside the Madness branches
   function syncBinds(){ $('hitname').textContent=hitBind.name;$('hitname2').textContent=hitBind.name;$('startname').textContent=startBind.name;$('startname2').textContent=startBind.name; }
   function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders();
