@@ -27,12 +27,13 @@
   #hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:13px;pointer-events:none;text-align:center}
   #hint .touch{display:none}
   @media (pointer:coarse){ #hint .keys{display:none} #hint .touch{display:inline} }
+  /* Safari only dropped the -webkit- prefix on backdrop-filter in 18, and the panel is now reachable on a phone */
   #gear{position:fixed;top:14px;right:14px;z-index:10;width:44px;height:44px;border-radius:13px;
-    border:1px solid var(--line);background:rgba(26,22,17,0.8);backdrop-filter:blur(8px);color:var(--txt);
+    border:1px solid var(--line);background:rgba(26,22,17,0.8);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--txt);
     font-size:20px;cursor:pointer;transition:transform .25s,filter .2s;display:flex;align-items:center;justify-content:center}
   #gear:hover{filter:brightness(1.25);transform:rotate(35deg)}
   #menu{position:fixed;top:68px;right:14px;width:336px;max-height:calc(100vh - 84px);overflow-y:auto;z-index:9;
-    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
+    background:var(--panel);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
     padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.5);
     transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1);transform-origin:top right}
   #menu.hidden{opacity:0;transform:scale(.95) translateY(-8px);pointer-events:none}
@@ -93,7 +94,7 @@
   .chip:hover{color:var(--txt);filter:brightness(1.3)}
   .chip.on{background:var(--accent);border-color:transparent;color:#231007;font-weight:600}
   #summary{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;width:320px;
-    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
+    background:var(--panel);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
     padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
   #summary.hidden{display:none}
   #summary .st{font-size:16px;font-weight:800}
@@ -168,6 +169,7 @@
     <canvas id="trend" width="304" height="52"></canvas>
     <div class="mlbl" id="h-legend"><span>oldest</span><span>% great per run · green = same setup</span><span>latest</span></div>
     <div id="hist-rows"></div>
+    <div class="note" id="h-more"></div>
     <div class="btns"><button class="b" id="btn-clearhist">Clear history</button></div>
     </details>
 
@@ -597,11 +599,15 @@
   function baseKey(){ const p=activePreset();
     return (p||('custom '+cfg.revMs+'/'+cfg.greatPct+'/'+cfg.goodPct))+'|'+perkList().join('+')+(cfg.adaptive?'|adaptive':''); }
   function sessName(){ const p=activePreset(), k=perkList().length; return (p?PNAME[p]:'custom')+(k?' +'+k:''); }
+  const ROWS=6, BARS=24;   // what the list and the chart have room for; the store holds HISTN
   function renderHistory(){
     const n=hist.length, key=baseKey();
     $('h-empty').style.display=n?'none':'block';
     trend.style.display=n?'block':'none'; $('h-legend').style.display=n?'flex':'none';
-    $('hist-rows').innerHTML = hist.slice(-6).reverse().map(h=>{ const d=new Date(h.t);
+    // 6 rows out of a possible 60 reads as "that is all of them" unless it says otherwise
+    $('h-more').textContent = n<=ROWS ? '' : n+' runs saved. The list shows the last '+ROWS+
+      (n>BARS?', the chart the last '+BARS:'')+'.';
+    $('hist-rows').innerHTML = hist.slice(-ROWS).reverse().map(h=>{ const d=new Date(h.t);
       return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+'</span>'+
              '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>±'+Math.round(h.err)+'ms · '+h.n+'</span></div>'; }).join('');
     drawTrend(key);
@@ -615,7 +621,7 @@
     [25,50,75].forEach(p=>{ const y=Math.round(h-p/100*h)+0.5;
       tctx.strokeStyle = p===50?'rgba(255,255,255,0.13)':C.grid;   // the halfway line carries the reading, so it is the one you can see
       tctx.beginPath();tctx.moveTo(G,y);tctx.lineTo(w,y);tctx.stroke(); });
-    const show=hist.slice(-24), bw=Math.min(15,pw/show.length), pad=G+(pw-show.length*bw)/2;
+    const show=hist.slice(-BARS), bw=Math.min(15,pw/show.length), pad=G+(pw-show.length*bw)/2;
     show.forEach((e,i)=>{ const bh=Math.max(1,clamp(e.great/e.n,0,1)*(h-3));
       tctx.fillStyle = e.key===key ? C.great : 'rgba(255,255,255,0.15)';   // the runs you can actually compare with what is set up now
       tctx.fillRect(pad+i*bw+bw*0.18,h-bh,Math.max(2,bw*0.64),bh); });
@@ -734,8 +740,12 @@
     if(k==='adaptive'){ st.adapt=1; st.okRun=0; }
     updateEffLabels(); syncWarn(); updateStats(); renderHistory(); saveProfile(); });   // perks are part of a run's identity, so the history highlight follows them
   function slider(id,key,fmtFn){ $(id).addEventListener('input',e=>{ cfg[key]=+e.target.value; fmtFn(); saveProfile(); }); }
-  document.querySelectorAll('#presets .chip').forEach(c=>c.addEventListener('click',()=>{
-    Object.assign(cfg,PRESETS[c.dataset.p]); syncSliders(); drawMeter(); renderHistory(); saveProfile(); }));
+  const CHIPNOTE={ oc:' · the difficult check, so it stands in for Oppression too' };   // the wiki gives Oppression the same check, and a chip of its own would be indistinguishable from this one
+  document.querySelectorAll('#presets .chip').forEach(c=>{ const k=c.dataset.p, p=PRESETS[k];
+    c.title = PNAME[k]+' · '+p.revMs+'ms rotation · great '+p.greatPct+'%'+   // built from the table, so a chip can never advertise values it does not set
+              (p.goodPct?' · good '+p.goodPct+'%':' · no good band')+(CHIPNOTE[k]||'');
+    c.addEventListener('click',()=>{
+      Object.assign(cfg,PRESETS[k]); syncSliders(); drawMeter(); renderHistory(); saveProfile(); }); });
   document.querySelectorAll('#lengths .chip').forEach(c=>c.addEventListener('click',()=>{
     cfg.sessN=+c.dataset.n; sess.length=0;   // a new target means a new count, not a partial one
     syncLengths(); updateStats(); saveProfile(); }));
