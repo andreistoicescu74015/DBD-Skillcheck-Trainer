@@ -72,7 +72,7 @@ Audio is synthesized: a cue when the check appears, and distinct good, great and
 
 ## How it works
 
-One static HTML file: vanilla JavaScript, the Canvas 2D API for the dial and the meters, the Web Audio API for sound. Around 590 lines of script, no dependencies, no build tooling.
+One static HTML file: vanilla JavaScript, the Canvas 2D API for the dial and the meters, the Web Audio API for sound. Around 630 lines of script, no dependencies, no build tooling.
 
 The profile lives in `localStorage` and covers settings, lifetime stats and run history. Export writes all three to a JSON file and Import reads one back, which is how you move a profile between machines. Reset settings restores the defaults and leaves your stats and history alone.
 
