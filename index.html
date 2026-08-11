@@ -190,7 +190,7 @@
     <input type="range" id="r-posmax" min="90" max="330" step="5" value="320" />
     <label class="sl" for="r-gap">Pause between checks: <span class="val" id="v-gap"></span></label>
     <input type="range" id="r-gap" min="0" max="1200" step="50" value="400" />
-    <label class="sl" id="l-spawn" for="r-spawn">Spawn area — needs Doctor: <span class="val" id="v-spawn"></span></label>
+    <label class="sl" id="l-spawn" for="r-spawn">Spawn area (needs Doctor): <span class="val" id="v-spawn"></span></label>
     <input type="range" id="r-spawn" min="0" max="100" step="5" value="50" />
 
     <details class="sec" id="d-appearance">
@@ -364,7 +364,7 @@
     st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
     if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
     updateStats(); saveProfile();
-    if (cfg.merciless){   // Merciless Storm: continue from the retained needle angle — on ANY end (success OR fail)
+    if (cfg.merciless){   // Merciless Storm: continue from the retained needle angle, on ANY end (success OR fail)
       const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
@@ -750,7 +750,7 @@
     cfg.sessN=+c.dataset.n; sess.length=0;   // a new target means a new count, not a partial one
     syncLengths(); updateStats(); saveProfile(); }));
   $('sum-close').addEventListener('click',closeSummary);
-  $('sum-again').addEventListener('click',()=>{ closeSummary(); toggleRun(); });
+  $('sum-again').addEventListener('click',()=>{ closeSummary(); toggleRun(); $('sum-again').blur(); });
   const effAndMeter=()=>{ updateEffLabels(); syncPresets(); syncWarn(); drawMeter(); renderHistory(); };   // the histogram scale follows the rotation time and the zone sizes, and the history highlight follows the baseline
   slider('r-rev','revMs',effAndMeter);
   slider('r-great','greatPct',effAndMeter);
@@ -784,7 +784,10 @@
       if(NARROW.matches) setMenu(false);            // on a phone the panel covers the dial, so Start would look like it did nothing
       sess.length=0; closeSummary(); updateStats(); saveProfile(); }   // every run starts from the same place: no tokens banked, baseline width
     else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.arc=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
-  $('btn-start').addEventListener('click',toggleRun);
+  // Activating these with the keyboard used to leave focus on the button, and a focused control keeps
+  // its own Space and Enter, so every press after "start" went to the button and the checks timed out.
+  const playBtn=(id,fn)=>$(id).addEventListener('click',()=>{ fn(); $(id).blur(); });
+  playBtn('btn-start',toggleRun);
   $('btn-reset').addEventListener('click',resetSession);
   $('btn-default').addEventListener('click',()=>{   // it sits next to Reset stats and wipes screenshot-calibrated values, so ask
     if(confirm('Reset every setting to its default? Your calibration will be lost. Stats are kept.')) resetDefaults(); });
@@ -803,7 +806,7 @@
     else { const R=cfg.dialR;   // a Madness check placed for the old size must not end up off-screen
       st.ox=clamp(st.ox,R,Math.max(R,VW-R)); st.oy=clamp(st.oy,R,Math.max(R,VH-R)); } }
   window.addEventListener('resize',fit);
-  $('btn-fs').addEventListener('click',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
+  playBtn('btn-fs',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
   $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify(profileObj(),null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
   $('btn-import').addEventListener('click',()=>$('imp').click());
