@@ -343,12 +343,17 @@
   function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
     if(ok){ if(++st.okRun>=ADAPTRUN){ st.okRun=0; st.adapt=clamp(st.adapt*ADAPTDN,ADAPTMIN,ADAPTMAX); } }
     else { st.okRun=0; st.adapt=clamp(st.adapt*ADAPTUP,ADAPTMIN,ADAPTMAX); } }
+  // Offset from where the needle starts to the band's leading edge, in the spin direction. The band has to
+  // finish before that angle: past 360 its tail wraps back onto it, drawn white but scored as a miss, because
+  // classify() reads a press there as sitting before the leading edge rather than after the trailing one.
+  // Both entry points roll through here, or the clamp holds on a fresh check and not on a chained one.
+  function rollZone(){ const mx=Math.max(0,360-st.eff.goodDeg);
+    const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),mx), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),mx);
+    return lo+Math.random()*(hi-lo); }
   function startCheck(){
     st.eff=computeEff();
-    const maxStart=Math.max(0,360-st.eff.goodDeg);   // the zone must finish before the needle's 12 o'clock start, or the drawn tail would score as a miss
-    const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),maxStart), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),maxStart);
     placeDial(); st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;   // Madness reverses the sweep at random
-    st.n0=0; st.needle=0; st.zoneStart = st.spin*(lo + Math.random()*(hi-lo));   // leading edge, ahead of 12 o'clock in the spin direction
+    st.n0=0; st.needle=0; st.zoneStart = st.spin*rollZone();   // leading edge, ahead of 12 o'clock, where the needle starts
     st.t0=now(); st.phase='active'; SND.appear();
   }
   const panelRight=()=>cfg.menuOpen?Math.max(2*cfg.dialR,VW-360):VW;   // the open panel owns the right 350px
@@ -384,11 +389,10 @@
     if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
     updateStats(); saveProfile();
     if (chained()){   // the chain continues from the retained needle angle, on ANY end (success OR fail)
-      const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
       st.n0=st.needle; st.t0=now();                                  // keep sweeping from the retained ending angle
-      st.zoneStart=st.n0+st.spin*(lo+Math.random()*(hi-lo)); st.phase='active';   // next leading edge, ahead in the (maybe new) spin
+      st.zoneStart=st.n0+st.spin*rollZone(); st.phase='active';      // next leading edge, ahead in the (maybe new) spin
       placeDial();                                                   // Madness may relocate; off mid-chain it recentres
     } else {
       st.phase='resolved'; st.nextAt=t+cfg.gapMs+Math.random()*Math.min(120,cfg.gapMs);   // jitter scales with the pause, so 0 really is 0
