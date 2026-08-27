@@ -246,6 +246,7 @@
   const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
   const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
+  const BACKMS=50;                        // the most a chained link may be backdated to the instant the last one ended: a 100-400ms hitch slips under STALLMS, and an unbounded backdate opens the next link past its own band
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
   const MAXDATE=8.64e15;                  // the largest instant a Date can hold; past it new Date() is Invalid and a history row renders as NaN/NaN
@@ -394,7 +395,10 @@
     if (chained()){   // the chain continues from the retained needle angle, on ANY end (success OR fail)
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
-      st.n0=st.needle; st.t0=endT||now();                             // keep sweeping from the retained ending angle, at the instant it ended: charging the chain for the input latency made every link a little slower than the panel claims
+      // keep sweeping from the retained ending angle, at the instant it ended: charging the chain for the
+      // input latency made every link a little slower than the panel claims. Bounded, because a 100-400ms
+      // stall passes the STALLMS test and would otherwise hand the next link a window already behind it.
+      st.n0=st.needle; st.t0=Math.max(endT||now(), now()-BACKMS);
       st.zoneStart=st.n0+st.spin*rollZone(); st.phase='active';      // next leading edge, ahead in the (maybe new) spin
       // deliberately no SND.appear() here: the chain is one continuous check and the cue belongs to its start
       placeDial();                                                   // Madness may relocate; off mid-chain it recentres
@@ -565,7 +569,10 @@
 
   // ---------- stats / meter ----------
   const p90Of=list=>{ const a=list.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);   // a percentile, so one panic press cannot flatten the chart or swamp an average
-    return a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0; };
+    // The largest sample is excluded once there is more than one. On a run of ten or fewer the plain 0.9
+    // index IS the panic press, so the bound it produced clipped nothing and the average was exactly what
+    // the clamp was added to resist. It also fixes the off-by-one wherever 0.9*n lands on a whole number.
+    return a.length?a[clamp(Math.floor(a.length*0.9),0,Math.max(0,a.length-2))]:0; };
   function meterSpan(){ const e=computeEff(), om=360/e.revMs;   // wide enough to show the window being trained AND the spread you actually produce
     return clamp(Math.round(Math.max(idealDeg(e.greatDeg,e.goodDeg)/om*1.25, p90Of(recent)*1.15)), 60, MSMAX); }   // the ceiling keeps the gridline loop below finite whatever a profile file claims
   function weighted(){ const sp=meterSpan(); let ws=0,wg=0,we=0,wb=0,wn=0;
