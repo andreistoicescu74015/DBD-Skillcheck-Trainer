@@ -248,6 +248,7 @@
   const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
+  const MAXDATE=8.64e15;                  // the largest instant a Date can hold; past it new Date() is Invalid and a history row renders as NaN/NaN
   const BASER=50;                         // the dial size the pixel values in Appearance were measured against. Everything is scaled by R/BASER, so this is a fixed reference, not the default size: moving the default must not redraw the dial of everyone who kept theirs.
   const ADAPTUP=1.08, ADAPTDN=0.94, ADAPTRUN=3, ADAPTMIN=0.35, ADAPTMAX=1.5;   // 3-down-1-up staircase; it settles near the window you hold about 4 times in 5
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -660,7 +661,8 @@
       tctx.fillStyle = e.key===key ? C.great : 'rgba(255,255,255,0.15)';   // the runs you can actually compare with what is set up now
       tctx.fillRect(pad+i*bw+bw*0.18,h-bh,Math.max(2,bw*0.64),bh); });
   }
-  function clearHistory(){ if(!hist.length||confirm('Delete all '+hist.length+' saved runs?')){ hist.length=0; saveNow(); renderHistory(); } }
+  let clearedAt=0;   // when this profile last had its history deliberately emptied. Absence from the array cannot tell "not seen yet" from "deleted", and the cross-tab merge needs to know which
+  function clearHistory(){ if(!hist.length||confirm('Delete all '+hist.length+' saved runs?')){ hist.length=0; clearedAt=Date.now(); saveNow(); renderHistory(); } }
 
   // ---------- effective-value labels (show how perks modify baseline) ----------
   function effSpan(base,eff,unit){ return Math.abs(eff-base)>(unit==='ms'?1:0.05) ? `${base}${unit} <span class="d">→ ${unit==='ms'?Math.round(eff):eff.toFixed(1)}${unit}</span>` : `${base}${unit}`; }
@@ -676,14 +678,15 @@
   const KINDS=['great','good','miss'];
   function settingsObj(){ const o={hitBind:{...hitBind},startBind:{...startBind}}; NUMS.forEach(k=>o[k]=cfg[k]); BOOLS.forEach(k=>o[k]=cfg[k]); return o; }
   function statsObj(){ return { att:stats.att, great:stats.great, good:stats.good, miss:stats.miss, streak:stats.streak, best:stats.best, recent:recent.slice() }; }
-  function profileObj(){ return {v:PVER, settings:settingsObj(), stats:statsObj(), hist:hist.slice()}; }
+  function profileObj(){ return {v:PVER, cleared:clearedAt, settings:settingsObj(), stats:statsObj(), hist:hist.slice()}; }
   let saveT=0;
   let saveFail=false;
   function saveNow(){ if(saveT){clearTimeout(saveT);saveT=0;}
     try{ localStorage.setItem(LSKEY,JSON.stringify(profileObj())); }
     // a full quota or a browser that refuses persistent storage used to fail silently for the whole session,
     // and everything was gone on reload while the panel two lines up still said the profile auto-saves
-    catch(e){ if(!saveFail){ saveFail=true; $('savewarn').style.display='block'; } } }
+    catch(e){ if(!saveFail){ saveFail=true; $('savewarn').style.display='block';
+      $('d-controls').open=true; cfg.openControls=true; } } }   // Controls & profile starts collapsed, and a warning nobody opens is the same silence this was added to end
   function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
@@ -692,18 +695,23 @@
   // neither is the copy another tab wrote to the same key.
   const fin=(v,d)=>(typeof v==='number'&&isFinite(v))?v:d, cnt=v=>Math.max(0,Math.round(fin(v,0)));
   const histRow=h=>(h&&typeof h==='object'&&cnt(h.n)>=1) ? {
-      t:cnt(h.t), key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),
+      t:cnt(h.t)<=MAXDATE?cnt(h.t):0, key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),   // bounded by what Date can represent, NOT by this clock: clamping to now() would relabel a run from a machine running ahead, and split its identity for the merge above
       n:cnt(h.n), great:cnt(h.great), good:cnt(h.good), miss:cnt(h.miss), conv:cnt(h.conv),
       err:Math.abs(fin(h.err,0)), bias:fin(h.bias,0), best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
   // Two tabs are two authorities over one key and the last write wins, so a run finished in one of them used
   // to be erased by the other's next save, and hist is the only record a finished run has. Take the rows this
   // tab has never seen and leave the settings alone, so nothing moves under you mid-session; this tab's next
-  // save then carries both sides. A clear in the other tab does not propagate, which is the safe direction.
+  // save then carries both sides. Absence from the array cannot tell "not seen yet" from "deleted", so the
+  // profile carries when its history was last deliberately emptied and rows older than that stay deleted.
   window.addEventListener('storage',e=>{ if(e.key!==LSKEY||!e.newValue)return;
     try{ const p=JSON.parse(e.newValue); if(!Array.isArray(p.hist))return;
-      const seen=new Set(hist.map(h=>h.t)); let n=0;
-      p.hist.forEach(h=>{ const r=histRow(h); if(r&&r.t&&!seen.has(r.t)){ hist.push(r); seen.add(r.t); n++; } });
-      if(!n)return;
+      let moved=false, cl=cnt(p.cleared);
+      if(cl>clearedAt){ clearedAt=cl;   // the other tab cleared more recently than this one, so its deletion wins here too
+        for(let i=hist.length-1;i>=0;i--) if(hist[i].t<=cl){ hist.splice(i,1); moved=true; } }
+      const seen=new Set(hist.map(h=>h.t));
+      p.hist.forEach(h=>{ const r=histRow(h);   // rows older than the clear are ones this side deleted on purpose, not ones it has never seen
+        if(r&&r.t&&r.t>clearedAt&&!seen.has(r.t)){ hist.push(r); seen.add(r.t); moved=true; } });
+      if(!moved)return;
       hist.sort((a,b)=>a.t-b.t); if(hist.length>HISTN)hist.splice(0,hist.length-HISTN);
       renderHistory(); }catch(err){} });
 
@@ -713,7 +721,7 @@
   const okBind=b=>{ if(!b||typeof b.name!=='string'||!b.name)return null;
     const name=b.name.slice(0,20);
     if(b.type==='key') return (typeof b.code==='string'&&b.code&&b.code.length<=32) ? {type:'key',code:b.code,name} : null;
-    if(b.type==='mouse'||b.type==='pad') return (Number.isInteger(b.code)&&b.code>=0&&b.code<=31) ? {type:b.type,code:b.code,name} : null;
+    if(b.type==='mouse'||b.type==='pad') return (Number.isInteger(b.code)&&b.code>=0&&b.code<=PADMAX) ? {type:b.type,code:b.code,name} : null;   // a code the poll can never emit is a bind that reads as a broken action rather than as a bad profile
     return null; };
   function applyProfile(p){ if(!p||typeof p!=='object')return;
     if(st.running)toggleRun();   // importing mid-run filed that run's history row under a setup it no longer had, and compared it against the wrong bucket
@@ -730,6 +738,7 @@
       recent.length=0;
       if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
         if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?clamp(r.ms,-MSMAX,MSMAX):null, kind:r.kind, conv:!!r.conv}); }); }
+    clearedAt=Math.max(clearedAt,cnt(p.cleared));
     if(Array.isArray(p.hist)){ hist.length=0;
       p.hist.slice(-HISTN).forEach(h=>{ const r=histRow(h); if(r)hist.push(r); }); }
     setVol(); syncUI(); updateStats(); renderHistory(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
@@ -884,7 +893,8 @@
       // profileObj always writes hist, so an export taken where nothing has been finished yet carries an
       // empty one, and importing that to move a calibration across machines wiped every run on this side
       if(hist.length&&Array.isArray(p.hist)&&!confirm('Replace your '+hist.length+' saved runs with the '+p.hist.length+' in this file?')) delete p.hist;
-      try{ applyProfile(p); saveProfile(); }catch(err){ alert('Invalid profile file'); } };
+      // replacing the history is as deliberate a removal as Clear history, so the other tab must not put it back
+      try{ applyProfile(p); if(Array.isArray(p.hist)) clearedAt=Date.now(); saveProfile(); }catch(err){ alert('Invalid profile file'); } };
     r.readAsText(f); e.target.value=''; });
 
   // ---------- input ----------
