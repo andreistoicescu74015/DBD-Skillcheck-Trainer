@@ -389,12 +389,14 @@
     // the feedback arc is drawn from a snapshot: in a chain the live values below are overwritten before it ever gets drawn
     st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
     if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
+    else st.msAt=0;   // the number from the check you hit used to survive its 650ms into the next one and sit on top of that one's red flash
     updateStats(); saveProfile();
     if (chained()){   // the chain continues from the retained needle angle, on ANY end (success OR fail)
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
       st.n0=st.needle; st.t0=endT||now();                             // keep sweeping from the retained ending angle, at the instant it ended: charging the chain for the input latency made every link a little slower than the panel claims
       st.zoneStart=st.n0+st.spin*rollZone(); st.phase='active';      // next leading edge, ahead in the (maybe new) spin
+      // deliberately no SND.appear() here: the chain is one continuous check and the cue belongs to its start
       placeDial();                                                   // Madness may relocate; off mid-chain it recentres
     } else {
       st.phase='resolved'; st.nextAt=t+cfg.gapMs+Math.random()*Math.min(120,cfg.gapMs);   // jitter scales with the pause, so 0 really is 0
@@ -413,17 +415,18 @@
     // score the presses you are making in the game. The keyboard had the milder version: alt-tab away and
     // the run filled with timeouts instead. Freeze rather than blank, and let resync drop the check on return.
     if (!document.hasFocus()){ st.away=true; render(); return; }
-    const t=now(), dt=t-(st.prevT||t); st.prevT=t; st.blank=false;
+    const t=now(), dt=t-(st.prevT||t); st.prevT=t;
     if(cfg.showFps){ const df=t-(st.lastFrameT||t); st.lastFrameT=t; if(df>0)st.fps=st.fps?st.fps*0.9+100/df:1000/df; }
-    if (st.running && (st.away||dt>STALLMS)) resync(t,st.away);   // the page stopped, you did not
+    st.blank = computeEff().goodDeg<=0;   // 0% zone: nothing to run and nothing to draw. Tested outside the running branch, or a stopped app with both sliders at zero showed a bare ring and no reason for it
+    if (st.blank) st.phase='idle';
+    else if (st.running && (st.away||dt>STALLMS)) resync(t,st.away);   // the page stopped, you did not
     else if (st.running){
       padPoll();   // ahead of the timeout test below: a press in the last few ms of the zone must not be beaten to it by the frame that ends the check
       // The poll can stop the run from inside this branch: start bound to a pad, the pad unplugged, or a pad
       // hit finishing a bounded session. All three leave phase 'idle', which is what the chain below starts
       // on, so without this the stop was followed by a check nothing could ever advance or resolve.
       if (st.running){
-        if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
-        else if (st.phase==='active'){ const om=360/st.eff.revMs; st.needle=st.n0+st.spin*(t-st.t0)*om;
+        if (st.phase==='active'){ const om=360/st.eff.revMs; st.needle=st.n0+st.spin*(t-st.t0)*om;
           if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg){                     // it expired somewhere inside the frame that noticed, so resolve it where it really did
             st.needle=st.zoneStart+st.spin*st.eff.goodDeg;
             register('miss',0,false,st.t0+(st.spin*(st.zoneStart-st.n0)+st.eff.goodDeg)/om); } }
@@ -450,7 +453,9 @@
     if (st.blank){   // both zones at 0%: an empty screen with no explanation reads as a broken app
       ring(cx,cy,R,T.ring,0,0);
       dctx.save(); dctx.fillStyle=C.warn; dctx.font='15px Segoe UI'; dctx.textAlign='center';
-      dctx.fillText('Great and Good are both 0%, so there is no zone to hit',cx,cy+R+34); dctx.restore();
+      dctx.fillText(chained()&&cfg.greatPct>0   // blaming the sliders contradicts the Great slider sitting right there at 3%
+        ? (cfg.merciless?'Merciless Storm':'No Quarter')+' removes the Great zone, and this baseline has no Good band'
+        : 'Great and Good are both 0%, so there is no zone to hit', cx,cy+R+34); dctx.restore();
       return;
     }
     if (st.phase==='active'||st.phase==='resolved'){
@@ -559,11 +564,10 @@
     dctx.restore(); }
 
   // ---------- stats / meter ----------
+  const p90Of=list=>{ const a=list.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);   // a percentile, so one panic press cannot flatten the chart or swamp an average
+    return a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0; };
   function meterSpan(){ const e=computeEff(), om=360/e.revMs;   // wide enough to show the window being trained AND the spread you actually produce
-    const win=idealDeg(e.greatDeg,e.goodDeg)/om;
-    const a=recent.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);
-    const p90=a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0;   // a percentile, so one panic press cannot flatten the chart
-    return clamp(Math.round(Math.max(win*1.25, p90*1.15)), 60, MSMAX); }     // the ceiling keeps the gridline loop below finite whatever a profile file claims
+    return clamp(Math.round(Math.max(idealDeg(e.greatDeg,e.goodDeg)/om*1.25, p90Of(recent)*1.15)), 60, MSMAX); }   // the ceiling keeps the gridline loop below finite whatever a profile file claims
   function weighted(){ const sp=meterSpan(); let ws=0,wg=0,we=0,wb=0,wn=0;
     recent.forEach((r,i)=>{ const w=i+1; ws+=w; if(r.kind==='great')wg+=w;
       if(r.ms!=null){ const m=clamp(r.ms,-sp,sp); we+=w*Math.abs(m); wb+=w*m; wn+=w; } });   // clamped: one panic press must not swamp the average
@@ -606,7 +610,7 @@
   // ---------- end-of-session summary ----------
   function endSession(){
     if(st.running)toggleRun();
-    const n=sess.length, sp=meterSpan();
+    const n=sess.length, sp=clamp(Math.round(p90Of(sess)*1.15),60,MSMAX);   // the run's own spread. meterSpan() describes the last 60 checks overall, which can be a different preset entirely, so a tight recent stretch used to report every earlier error in this run as 60ms
     const cnt=k=>sess.filter(r=>r.kind===k).length, pct=c=>Math.round(c/n*100);
     const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const mabs=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>Math.abs(clamp(r.ms,-sp,sp))); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
@@ -618,7 +622,8 @@
     const rows=[['great',cnt('great')+' · '+pct(cnt('great'))+'%'],
                 ['good', cnt('good') +' · '+pct(cnt('good'))+'%'],
                 ['miss', cnt('miss') +' · '+pct(cnt('miss'))+'%'],
-                ['average error', sgn(m)],
+                ['average error', err==null?'—':'±'+Math.round(err)+'ms'],   // the same number the history row prints, so the two cannot disagree
+                ['bias', sgn(m)],                                        // equal and opposite errors are 'on time' here and still ±40ms above
                 ['drift', (m1==null||m2==null)?'—':(Math.abs(m2-m1)<4?'steady':sgn(m1)+' → '+sgn(m2))],
                 ['best streak', best]];
     if (cfg.stake)    rows.push(['greats from Stake Out', conv]);
@@ -628,7 +633,7 @@
     $('sum-rows').innerHTML=rows.map(r=>'<div class="sr"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
     $('summary').classList.remove('hidden');
     hist.push({ t:Date.now(), key, name:st.runName||sessName(), n, great:cnt('great'), good:cnt('good'), miss:cnt('miss'), conv,
-                err:err==null?0:err, bias:m==null?0:m, best, adapt:cfg.adaptive?st.adapt:1 });
+                err, bias:m, best, adapt:cfg.adaptive?st.adapt:1 });   // err stays null when every check timed out: stored as 0 it read as perfect timing
     if (hist.length>HISTN) hist.shift();
     saveNow(); renderHistory();
   }
@@ -654,8 +659,9 @@
     $('h-more').textContent = n<=ROWS ? '' : n+' runs saved. The list shows the last '+ROWS+
       (n>BARS?', the chart the last '+BARS:'')+'.';
     $('hist-rows').innerHTML = hist.slice(-ROWS).reverse().map(h=>{ const d=new Date(h.t);
-      return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+'</span>'+
-             '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>±'+Math.round(h.err)+'ms · '+h.n+'</span></div>'; }).join('');
+      const zone = h.adapt&&Math.abs(h.adapt-1)>0.01 ? ' · '+Math.round(h.adapt*100)+'% zone' : '';   // the staircase level the run ended on, which the row has been storing and never showing
+      return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+zone+'</span>'+
+             '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>'+(h.err==null?'—':'±'+Math.round(h.err)+'ms')+' · '+h.n+'</span></div>'; }).join('');
     drawTrend(key);
   }
   function drawTrend(key){
@@ -708,7 +714,8 @@
   const histRow=h=>(h&&typeof h==='object'&&cnt(h.n)>=1) ? {
       t:cnt(h.t)<=MAXDATE?cnt(h.t):0, key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),   // bounded by what Date can represent, NOT by this clock: clamping to now() would relabel a run from a machine running ahead, and split its identity for the merge above
       n:cnt(h.n), great:cnt(h.great), good:cnt(h.good), miss:cnt(h.miss), conv:cnt(h.conv),
-      err:Math.abs(fin(h.err,0)), bias:fin(h.bias,0), best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
+      err:h.err==null?null:clamp(Math.abs(fin(h.err,0)),0,MSMAX), bias:h.bias==null?null:clamp(fin(h.bias,0),-MSMAX,MSMAX),
+      best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
   // Two tabs are two authorities over one key and the last write wins, so a run finished in one of them used
   // to be erased by the other's next save, and hist is the only record a finished run has. Take the rows this
   // tab has never seen and leave the settings alone, so nothing moves under you mid-session; this tab's next
@@ -803,6 +810,7 @@
     if(cfg.injured && e.greatPct<=0)   out.push('This Is Not Happening only grows the Great zone, and this check has none.');
     if(cfg.stake && e.goodPct<=0)      out.push('Stake Out spends a token to turn a Good into a Great, and this check has no Good band.');
     if(chained() && cfg.hyper)         out.push('A chained check has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    if(cfg.lullaby && chained())       out.push('A chain plays its warning sound once, at the first check, so this silences that one and nothing after it.');
     if(cfg.merciless && cfg.noquarter) out.push('Merciless Storm is a generator check and No Quarter a self-heal, so no check is ever under both. Leave on the one your baseline matches.');
     return out;
   }
