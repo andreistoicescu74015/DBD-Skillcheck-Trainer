@@ -244,6 +244,7 @@
   const trend=$('trend'), tctx=trend.getContext('2d');
   const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
+  const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
   const BASER=50;                         // the dial size the pixel values in Appearance were measured against. Everything is scaled by R/BASER, so this is a fixed reference, not the default size: moving the default must not redraw the dial of everyone who kept theirs.
@@ -408,11 +409,16 @@
     if (st.running && (st.away||dt>STALLMS)) resync(t);   // the page stopped, you did not
     else if (st.running){
       padPoll();   // ahead of the timeout test below: a press in the last few ms of the zone must not be beaten to it by the frame that ends the check
-      if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
-      else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
-      else if (st.phase==='idle') startCheck();
-      else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
-      if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
+      // The poll can stop the run from inside this branch: start bound to a pad, the pad unplugged, or a pad
+      // hit finishing a bounded session. All three leave phase 'idle', which is what the chain below starts
+      // on, so without this the stop was followed by a check nothing could ever advance or resolve.
+      if (st.running){
+        if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
+        else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
+        else if (st.phase==='idle') startCheck();
+        else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
+        if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
+      }
     }
     st.away=false;
     render();
@@ -902,7 +908,7 @@
       // button went down. Worth taking anyway: it survives OUR timer being late. Firefox jitters it and
       // Safari returns seconds since boot, so it is checked against this clock rather than trusted.
       if(g.timestamp>ts&&g.timestamp<=t&&t-g.timestamp<50) ts=g.timestamp;
-      for(let b=0;b<g.buttons.length&&b<31;b++) if(g.buttons[b].pressed) bits|=1<<b; }   // .pressed flips at the driver's 30/255, the threshold the game reads too, so a trigger agrees with DBD about when you pressed
+      for(let b=0;b<g.buttons.length&&b<=PADMAX;b++) if(g.buttons[b].pressed) bits|=1<<b; }   // .pressed flips at the driver's 30/255, the threshold the game reads too, so a trigger agrees with DBD about when you pressed
     const was=padOn; padOn=!!g0;
     if(was!==padOn){ padRate(padOn?4:500); padBits=bits;   // the press that wakes a pad cannot be timed, so it only wakes it; on the way out, a button held at unplug would stay masked and eat the next real press
       if(!padOn&&st.running&&(hitBind.type==='pad'||startBind.type==='pad')) toggleRun();   // a Bluetooth pad that idled out leaves the loop spawning checks nobody can answer, and every one lands in the run as a miss
