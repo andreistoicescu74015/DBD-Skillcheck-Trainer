@@ -223,6 +223,7 @@
     <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
     <div class="btns"><button class="b" id="btn-default">Reset settings</button></div>
     <input type="file" id="imp" accept="application/json" style="display:none" />
+    <div class="warn" id="savewarn">This browser will not store the profile, so nothing you change here survives a reload. Export keeps a copy.</div>
     <div class="note">Profile auto-saves · Export / Import moves settings, stats and run history together · Rebind takes a key, a mouse button (<b>M4 / M5</b> included) or a controller button. Reset settings wipes your calibration and asks first; it leaves stats and history alone.</div>
     <div class="note">A controller is invisible to the browser until you press a button on it, so press one before you hit Rebind. Button names are the standard layout, Xbox first and PlayStation second. A pad has no input events, only a buffer this page reads, so a press reads <b>slightly later</b> than a key and a little looser. That is the browser polling it and not you, so pad runs are saved and compared apart from keyboard runs.</div>
     </details>
@@ -250,7 +251,7 @@
   const BASER=50;                         // the dial size the pixel values in Appearance were measured against. Everything is scaled by R/BASER, so this is a fixed reference, not the default size: moving the default must not redraw the dial of everyone who kept theirs.
   const ADAPTUP=1.08, ADAPTDN=0.94, ADAPTRUN=3, ADAPTMIN=0.35, ADAPTMAX=1.5;   // 3-down-1-up staircase; it settles near the window you hold about 4 times in 5
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));   // history rows are built with innerHTML and an imported profile is not ours
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));   // history rows are built with innerHTML and an imported profile is not ours. Quotes are in so that interpolating a name into an attribute later is safe by default rather than by luck
 
   // Colours the canvas shares with the panel live in :root and are read from there, so editing
   // the stylesheet restyles the dial and the meter too. Only dial-specific hues stay literal here.
@@ -677,8 +678,12 @@
   function statsObj(){ return { att:stats.att, great:stats.great, good:stats.good, miss:stats.miss, streak:stats.streak, best:stats.best, recent:recent.slice() }; }
   function profileObj(){ return {v:PVER, settings:settingsObj(), stats:statsObj(), hist:hist.slice()}; }
   let saveT=0;
+  let saveFail=false;
   function saveNow(){ if(saveT){clearTimeout(saveT);saveT=0;}
-    try{ localStorage.setItem(LSKEY,JSON.stringify(profileObj())); }catch(e){} }
+    try{ localStorage.setItem(LSKEY,JSON.stringify(profileObj())); }
+    // a full quota or a browser that refuses persistent storage used to fail silently for the whole session,
+    // and everything was gone on reload while the panel two lines up still said the profile auto-saves
+    catch(e){ if(!saveFail){ saveFail=true; $('savewarn').style.display='block'; } } }
   function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
@@ -702,7 +707,14 @@
       hist.sort((a,b)=>a.t-b.t); if(hist.length>HISTN)hist.splice(0,hist.length-HISTN);
       renderHistory(); }catch(err){} });
 
-  const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':((b.type==='mouse'||b.type==='pad')&&typeof b.code==='number'))&&typeof b.name==='string';
+  // Rebuilt rather than copied, like a history row: the name is drawn into the two kbd chips and onto the
+  // dial, and a mouse or pad code outside the range the handlers compare against is a bind that can never
+  // match, which reads as the action being broken rather than as the profile being bad.
+  const okBind=b=>{ if(!b||typeof b.name!=='string'||!b.name)return null;
+    const name=b.name.slice(0,20);
+    if(b.type==='key') return (typeof b.code==='string'&&b.code&&b.code.length<=32) ? {type:'key',code:b.code,name} : null;
+    if(b.type==='mouse'||b.type==='pad') return (Number.isInteger(b.code)&&b.code>=0&&b.code<=31) ? {type:b.type,code:b.code,name} : null;
+    return null; };
   function applyProfile(p){ if(!p||typeof p!=='object')return;
     if(st.running)toggleRun();   // importing mid-run filed that run's history row under a setup it no longer had, and compared it against the wrong bucket
     let migrated=false; const s=p.settings; if(s){
@@ -711,7 +723,7 @@
       if(cfg.posMin>cfg.posMax){ const t=cfg.posMin; cfg.posMin=cfg.posMax; cfg.posMax=t; }
       if((p.v||0)<11 && typeof s.blockPx==='number'){   // the band outline used to spill 2px past the band, so a pre-v11 value drew blockPx+2
         cfg.blockPx=clamp(cfg.blockPx+2,RANGE.blockPx[0],RANGE.blockPx[1]); migrated=true; }
-      if(okBind(s.hitBind))hitBind={...s.hitBind}; if(okBind(s.startBind))startBind={...s.startBind};
+      const hb=okBind(s.hitBind), sb=okBind(s.startBind); if(hb)hitBind=hb; if(sb)startBind=sb;
       if(hitBind.type===startBind.type&&hitBind.code===startBind.code)   // both actions on one input kills one of them; move start, and never onto what hit already holds
         startBind = (hitBind.type==='key'&&hitBind.code==='Enter') ? {type:'key',code:'Space',name:'Space'} : {type:'key',code:'Enter',name:'Enter'}; }
     if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
@@ -842,7 +854,8 @@
   // its own Space and Enter, so every press after "start" went to the button and the checks timed out.
   const playBtn=(id,fn)=>$(id).addEventListener('click',()=>{ fn(); $(id).blur(); });
   playBtn('btn-start',toggleRun);
-  $('btn-reset').addEventListener('click',resetSession);
+  $('btn-reset').addEventListener('click',()=>{   // it sits between Export and Import, whose whole point is protecting the same numbers, and it was the only one that just did it
+    if(!stats.att||confirm('Clear all '+stats.att+' recorded checks? Run history is kept.')) resetSession(); });
   $('btn-default').addEventListener('click',()=>{   // it sits next to Reset stats and wipes screenshot-calibrated values, so ask
     if(confirm('Reset every setting to its default? Your calibration will be lost. Stats are kept.')) resetDefaults(); });
   $('btn-hitkey').addEventListener('click',()=>{rebinding='hit';$('btn-hitkey').textContent='Press…';});
