@@ -35,8 +35,12 @@
   #menu{position:fixed;top:68px;right:14px;width:336px;max-height:calc(100vh - 84px);overflow-y:auto;z-index:9;
     background:var(--panel);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
     padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.5);
-    transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1);transform-origin:top right}
-  #menu.hidden{opacity:0;transform:scale(.95) translateY(-8px);pointer-events:none}
+    transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s;transform-origin:top right}
+  /* opacity alone left the closed panel in the tab order: two Tabs landed on an invisible preset chip, which
+     kept the hit key to itself and rewrote the baseline on Space. visibility keeps the layout box, so the
+     meter canvas inside can still be measured at boot, and the delay lets the fade finish before it goes. */
+  #menu.hidden{opacity:0;transform:scale(.95) translateY(-8px);pointer-events:none;visibility:hidden;
+    transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s .2s}
   #menu::-webkit-scrollbar{width:8px}#menu::-webkit-scrollbar-thumb{background:#3a342c;border-radius:4px}
   .title{font-size:16px;font-weight:800}
   .subtitle{font-size:11px;color:var(--dim);margin-bottom:6px}
@@ -935,8 +939,8 @@
   const keyName=e=>e.code==='Space'?'Space':(e.key.length===1?e.key.toUpperCase():e.code.replace('Key',''));
   const matchKey=(b,e)=>b.type==='key'&&e.code===b.code;
   const matchMouse=(b,e)=>b.type==='mouse'&&e.button===b.code&&(e.button>=3||!overUI(e));
-  const onControl=()=>{ const a=document.activeElement, t=a&&a.tagName, y=a&&a.type;   // let a focused button or switch keep its own Enter/Space
-    return t==='BUTTON'||(t==='INPUT'&&(y==='checkbox'||y==='file')); };
+  const onControl=()=>{ const a=document.activeElement, t=a&&a.tagName, y=a&&a.type;   // let a focused button, switch or section header keep its own Enter/Space
+    return t==='BUTTON'||t==='SUMMARY'||(t==='INPUT'&&(y==='checkbox'||y==='file')); };
   window.addEventListener('keydown',e=>{
     if(rebinding){ if(e.code==='Escape'){ rebinding=null; $('btn-hitkey').textContent='Rebind'; $('btn-startkey').textContent='Rebind'; }
       else setBind(rebinding,{type:'key',code:e.code,name:keyName(e)}); e.preventDefault(); return; }
@@ -997,7 +1001,7 @@
 
   // drop focus after a POINTER interaction, so the hit key is never eaten by the widget you just clicked.
   // Keyboard activation deliberately keeps focus, otherwise tabbing through the panel would be unusable.
-  document.querySelectorAll('button').forEach(b=>b.addEventListener('pointerup',()=>b.blur()));
+  document.querySelectorAll('button,summary').forEach(b=>b.addEventListener('pointerup',()=>b.blur()));   // summary is on the list now that it keeps Enter and Space: a clicked header must not park focus there
   document.querySelectorAll('.sw').forEach(l=>l.addEventListener('pointerup',()=>l.querySelector('input').blur()));
 
   // ---------- boot ----------
