@@ -683,25 +683,43 @@
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
 
+  // A history row is rebuilt rather than trusted wherever it comes from: an imported file is not ours, and
+  // neither is the copy another tab wrote to the same key.
+  const fin=(v,d)=>(typeof v==='number'&&isFinite(v))?v:d, cnt=v=>Math.max(0,Math.round(fin(v,0)));
+  const histRow=h=>(h&&typeof h==='object'&&cnt(h.n)>=1) ? {
+      t:cnt(h.t), key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),
+      n:cnt(h.n), great:cnt(h.great), good:cnt(h.good), miss:cnt(h.miss), conv:cnt(h.conv),
+      err:Math.abs(fin(h.err,0)), bias:fin(h.bias,0), best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
+  // Two tabs are two authorities over one key and the last write wins, so a run finished in one of them used
+  // to be erased by the other's next save, and hist is the only record a finished run has. Take the rows this
+  // tab has never seen and leave the settings alone, so nothing moves under you mid-session; this tab's next
+  // save then carries both sides. A clear in the other tab does not propagate, which is the safe direction.
+  window.addEventListener('storage',e=>{ if(e.key!==LSKEY||!e.newValue)return;
+    try{ const p=JSON.parse(e.newValue); if(!Array.isArray(p.hist))return;
+      const seen=new Set(hist.map(h=>h.t)); let n=0;
+      p.hist.forEach(h=>{ const r=histRow(h); if(r&&r.t&&!seen.has(r.t)){ hist.push(r); seen.add(r.t); n++; } });
+      if(!n)return;
+      hist.sort((a,b)=>a.t-b.t); if(hist.length>HISTN)hist.splice(0,hist.length-HISTN);
+      renderHistory(); }catch(err){} });
+
   const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':((b.type==='mouse'||b.type==='pad')&&typeof b.code==='number'))&&typeof b.name==='string';
-  function applyProfile(p){ if(!p||typeof p!=='object')return; let migrated=false; const s=p.settings; if(s){
+  function applyProfile(p){ if(!p||typeof p!=='object')return;
+    if(st.running)toggleRun();   // importing mid-run filed that run's history row under a setup it no longer had, and compared it against the wrong bucket
+    let migrated=false; const s=p.settings; if(s){
       NUMS.forEach(k=>{ const v=s[k]; if(typeof v==='number'&&isFinite(v))cfg[k]=clamp(v,RANGE[k][0],RANGE[k][1]); });   // an out-of-range value used to break the state machine outright
       BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
       if(cfg.posMin>cfg.posMax){ const t=cfg.posMin; cfg.posMin=cfg.posMax; cfg.posMax=t; }
       if((p.v||0)<11 && typeof s.blockPx==='number'){   // the band outline used to spill 2px past the band, so a pre-v11 value drew blockPx+2
         cfg.blockPx=clamp(cfg.blockPx+2,RANGE.blockPx[0],RANGE.blockPx[1]); migrated=true; }
       if(okBind(s.hitBind))hitBind={...s.hitBind}; if(okBind(s.startBind))startBind={...s.startBind};
-      if(hitBind.type===startBind.type&&hitBind.code===startBind.code) startBind={type:'key',code:'Enter',name:'Enter'}; }
+      if(hitBind.type===startBind.type&&hitBind.code===startBind.code)   // both actions on one input kills one of them; move start, and never onto what hit already holds
+        startBind = (hitBind.type==='key'&&hitBind.code==='Enter') ? {type:'key',code:'Space',name:'Space'} : {type:'key',code:'Enter',name:'Enter'}; }
     if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
       recent.length=0;
       if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
         if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?clamp(r.ms,-MSMAX,MSMAX):null, kind:r.kind, conv:!!r.conv}); }); }
-    if(Array.isArray(p.hist)){ hist.length=0;   // an imported file is not ours, so every field is rebuilt rather than trusted
-      const num=(v,d)=>(typeof v==='number'&&isFinite(v))?v:d, int=(v)=>Math.max(0,Math.round(num(v,0)));
-      p.hist.slice(-HISTN).forEach(h=>{ if(!h||typeof h!=='object'||int(h.n)<1)return;
-        hist.push({ t:int(h.t), key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),
-                    n:int(h.n), great:int(h.great), good:int(h.good), miss:int(h.miss), conv:int(h.conv),
-                    err:Math.abs(num(h.err,0)), bias:num(h.bias,0), best:int(h.best), adapt:clamp(num(h.adapt,1),ADAPTMIN,ADAPTMAX) }); }); }
+    if(Array.isArray(p.hist)){ hist.length=0;
+      p.hist.slice(-HISTN).forEach(h=>{ const r=histRow(h); if(r)hist.push(r); }); }
     setVol(); syncUI(); updateStats(); renderHistory(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
   function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
     hitBind={type:'key',code:'Space',name:'Space'}; startBind={type:'key',code:'Enter',name:'Enter'};
@@ -847,7 +865,14 @@
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
   $('btn-import').addEventListener('click',()=>$('imp').click());
   $('imp').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
-    r.onload=()=>{ try{applyProfile(JSON.parse(r.result));saveProfile();}catch(err){alert('Invalid profile file');} }; r.readAsText(f); e.target.value=''; });
+    r.onerror=()=>alert('Could not read that file');
+    r.onload=()=>{ let p=null; try{ p=JSON.parse(r.result); }catch(err){}
+      if(!p||typeof p!=='object'||(!p.settings&&!p.stats&&!p.hist)) return alert('Invalid profile file');   // any JSON at all used to report success, so an unrelated file looked like it had imported
+      // profileObj always writes hist, so an export taken where nothing has been finished yet carries an
+      // empty one, and importing that to move a calibration across machines wiped every run on this side
+      if(hist.length&&Array.isArray(p.hist)&&!confirm('Replace your '+hist.length+' saved runs with the '+p.hist.length+' in this file?')) delete p.hist;
+      try{ applyProfile(p); saveProfile(); }catch(err){ alert('Invalid profile file'); } };
+    r.readAsText(f); e.target.value=''; });
 
   // ---------- input ----------
   const MOUSENAMES={0:'Mouse L',1:'Mouse M',2:'Mouse R',3:'M4',4:'M5'};
