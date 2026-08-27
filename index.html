@@ -214,6 +214,7 @@
     <label class="sl" for="r-vol">Volume: <span class="val" id="v-vol"></span></label>
     <input type="range" id="r-vol" min="0" max="100" step="5" value="70" />
     <div class="note">Release the slider to hear a Great at that level.</div>
+    <div class="note" id="latnote"></div>
 
     <details class="sec" id="d-controls">
     <summary>Controls &amp; profile</summary>
@@ -222,7 +223,8 @@
     <div class="btns"><button class="b" id="btn-reset">Reset stats</button><button class="b" id="btn-export">Export</button><button class="b" id="btn-import">Import</button></div>
     <div class="btns"><button class="b" id="btn-default">Reset settings</button></div>
     <input type="file" id="imp" accept="application/json" style="display:none" />
-    <div class="note">Profile auto-saves · Export / Import moves settings, stats and run history together · Rebind supports keys &amp; mouse incl. <b>M4 / M5</b>. Reset settings wipes your calibration and asks first; it leaves stats and history alone.</div>
+    <div class="note">Profile auto-saves · Export / Import moves settings, stats and run history together · Rebind takes a key, a mouse button (<b>M4 / M5</b> included) or a controller button. Reset settings wipes your calibration and asks first; it leaves stats and history alone.</div>
+    <div class="note">A controller is invisible to the browser until you press a button on it, so press one before you hit Rebind. Button names are the standard layout, Xbox first and PlayStation second. A pad has no input events, only a buffer this page reads, so a press reads <b>slightly later</b> than a key and a little looser. That is the browser polling it and not you, so pad runs are saved and compared apart from keyboard runs.</div>
     </details>
   </div>
 
@@ -242,6 +244,7 @@
   const trend=$('trend'), tctx=trend.getContext('2d');
   const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
+  const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
   const BASER=50;                         // the dial size the pixel values in Appearance were measured against. Everything is scaled by R/BASER, so this is a fixed reference, not the default size: moving the default must not redraw the dial of everyone who kept theirs.
@@ -276,6 +279,7 @@
   const cfg = JSON.parse(JSON.stringify(DEFAULTS));
   let hitBind={type:'key',code:'Space',name:'Space'}, startBind={type:'key',code:'Enter',name:'Enter'};
   let rebinding=null, spawnHintUntil=0;
+  let padOn=false, padBits=0;   // padBits: every pad button down at the last poll, OR'd across pads, so Steam's duplicate virtual device and the real one are one press and not two
   let VW=0, VH=0, MW=300, MH=62, TW=300, TH=52;   // canvas sizes in CSS px; the backing stores are devicePixelRatio times larger
 
   const st = { phase:'idle', running:false, t0:0, needle:0, zoneStart:200,
@@ -293,7 +297,16 @@
 
   // ---------- audio (synthesized; not the game's files) ----------
   let ac=null,master=null;
-  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);} master.gain.value=cfg.vol; if(ac.state==='suspended')ac.resume(); return ac; }
+  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);
+      ac.addEventListener('statechange',latNote); }   // the numbers below only mean anything once the context is actually running, which resume() reaches asynchronously
+    master.gain.value=cfg.vol; if(ac.state==='suspended')ac.resume(); latNote(); return ac; }
+  // The cue is scheduled at t0 but leaves the speakers later, and the trainer scores you against t0. The gap
+  // is the browser's buffer plus the output device, so say the number instead of letting the beep quietly
+  // teach a press that late. outputLatency is absent in Safari and baseLatency on older engines, so treat
+  // what comes back as a floor and say nothing rather than print a number that is mostly missing.
+  function latNote(){ const el=$('latnote'); if(!el)return;
+    const l=(ac&&ac.state==='running') ? ((ac.baseLatency||0)+(ac.outputLatency||0))*1000 : 0;
+    el.textContent = l>=10 ? 'The warning sound reaches you about '+Math.round(l)+'ms after the check starts. That is this browser and your output device, not the trainer, and Bluetooth headphones add far more. Train to the dial.' : ''; }
   function setVol(){ if(master)master.gain.value=cfg.vol; }
   function tone(f,dur,vol,type,when,f2){ const c=actx(),t=c.currentTime+(when||0),o=c.createOscillator(),g=c.createGain();
     o.type=type||'sine';o.frequency.setValueAtTime(f,t); if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
@@ -387,15 +400,25 @@
   function frame(){
     requestAnimationFrame(frame);
     if (document.hidden){ st.away=true; return; }   // there is nothing to draw, and the check must not run on while you are somewhere else
+    // A pad reports to every VISIBLE page, focused or not, so a trainer left up on a second monitor would
+    // score the presses you are making in the game. The keyboard had the milder version: alt-tab away and
+    // the run filled with timeouts instead. Freeze rather than blank, and let resync drop the check on return.
+    if (!document.hasFocus()){ st.away=true; render(); return; }
     const t=now(), dt=t-(st.prevT||t); st.prevT=t; st.blank=false;
     if(cfg.showFps){ const df=t-(st.lastFrameT||t); st.lastFrameT=t; if(df>0)st.fps=st.fps?st.fps*0.9+100/df:1000/df; }
     if (st.running && (st.away||dt>STALLMS)) resync(t);   // the page stopped, you did not
     else if (st.running){
-      if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
-      else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
-      else if (st.phase==='idle') startCheck();
-      else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
-      if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
+      padPoll();   // ahead of the timeout test below: a press in the last few ms of the zone must not be beaten to it by the frame that ends the check
+      // The poll can stop the run from inside this branch: start bound to a pad, the pad unplugged, or a pad
+      // hit finishing a bounded session. All three leave phase 'idle', which is what the chain below starts
+      // on, so without this the stop was followed by a check nothing could ever advance or resolve.
+      if (st.running){
+        if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
+        else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
+        else if (st.phase==='idle') startCheck();
+        else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
+        if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
+      }
     }
     st.away=false;
     render();
@@ -426,8 +449,9 @@
         const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
         drawCheck(cx,cy,R,k,bh,Math.min((lo+hi)/2,Math.max(0,360-e.goodDeg)),e.greatDeg,e.goodDeg,0,1,0.5);
       } else ring(cx,cy,R,T.ring,0,0);
-      if(!st.running){ dctx.fillStyle=C.idle; dctx.font='15px Segoe UI'; dctx.textAlign='center';
-        dctx.fillText('Press '+startBind.name+' to start',cx,cy+R+34); }   // the preview needle points up, so this needs no clearance
+      if(!st.running){ dctx.fillStyle=C.idle; dctx.font='15px Segoe UI'; dctx.textAlign='center';   // the preview needle points up, so this needs no clearance
+        // a pad is invisible to the browser until it is pressed, so naming its button before then is a dead end
+        dctx.fillText(startBind.type==='pad'&&!padOn?'Press a button on your controller':'Press '+startBind.name+' to start',cx,cy+R+34); }
     }
     const A=st.arc;   // the error as a distance, drawn against the zone you were aiming at. From a snapshot, so a Merciless chain gets it too instead of being the one mode with no feedback
     if (A && A.wd>0 && (st.phase==='resolved' || now()-A.at<ARCMS)){
@@ -464,6 +488,10 @@
       dctx.fillText(fmt(st.lastMs),st.msX,st.msY); dctx.textBaseline='alphabetic'; dctx.restore(); }
     }
     if (now()<spawnHintUntil) drawSpawnArea();
+    // A pad press dispatches no DOM event, so it grants no user activation and cannot lift the context actx()
+    // built suspended. The appear cue is half the training, so say so rather than running silent.
+    if (padOn && cfg.audio && ac && ac.state==='suspended'){ dctx.save(); dctx.fillStyle=C.warn; dctx.font='13px Segoe UI';
+      dctx.textAlign='center'; dctx.fillText('Click the page once to turn the sound on',VW/2,24); dctx.restore(); }
   }
   function drawSpawnArea(){
     const R=cfg.dialR, bw=Math.max(0,VW-2*R)*cfg.spawnArea, bv=Math.max(0,VH-2*R)*cfg.spawnArea;
@@ -596,12 +624,13 @@
     return (dg>0?'+':'')+dg+'% great'+(de==null?'':(Math.abs(de)<2?' · same spread':' · '+Math.abs(de)+'ms '+(de>0?'tighter':'wider'))); }
 
   // ---------- history ----------
-  // A run is only comparable with one set up the same way, so the key carries the baseline, the perks
-  // and whether the staircase was on. Everything else in the row is just there to be read.
+  // A run is only comparable with one set up the same way, so the key carries the baseline, the perks,
+  // whether the staircase was on, and what you hit with: a pad press reads later than a key and a little
+  // looser, enough to move great% on its own. Everything else in the row is there to be read.
   const PERKS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','noquarter'];
   const perkList=()=>PERKS.filter(k=>cfg[k]);
   function baseKey(){ const p=activePreset();
-    return (p||('custom '+cfg.revMs+'/'+cfg.greatPct+'/'+cfg.goodPct))+'|'+perkList().join('+')+(cfg.adaptive?'|adaptive':''); }
+    return (p||('custom '+cfg.revMs+'/'+cfg.greatPct+'/'+cfg.goodPct))+'|'+perkList().join('+')+(cfg.adaptive?'|adaptive':'')+(hitBind.type==='pad'?'|pad':''); }
   function sessName(){ const p=activePreset(), k=perkList().length; return (p?PNAME[p]:'custom')+(k?' +'+k:''); }
   const ROWS=6, BARS=24;   // what the list and the chart have room for; the store holds HISTN
   function renderHistory(){
@@ -654,7 +683,7 @@
   window.addEventListener('pagehide',saveNow);
   document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
 
-  const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':(b.type==='mouse'&&typeof b.code==='number'))&&typeof b.name==='string';
+  const okBind=b=>b&&(b.type==='key'?typeof b.code==='string':((b.type==='mouse'||b.type==='pad')&&typeof b.code==='number'))&&typeof b.name==='string';
   function applyProfile(p){ if(!p||typeof p!=='object')return; let migrated=false; const s=p.settings; if(s){
       NUMS.forEach(k=>{ const v=s[k]; if(typeof v==='number'&&isFinite(v))cfg[k]=clamp(v,RANGE[k][0],RANGE[k][1]); });   // an out-of-range value used to break the state machine outright
       BOOLS.forEach(k=>{if(typeof s[k]==='boolean')cfg[k]=s[k];});
@@ -855,6 +884,42 @@
     if(overUI(e)||$('summary').contains(e.target)||!$('summary').classList.contains('hidden'))return;
     e.preventDefault(); if(!st.running)toggleRun(); else onPress(e.timeStamp); },{passive:false});
   window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
+
+  // ---------- gamepad ----------
+  // A pad fires no events: it is a buffer you read, so a press is only as fresh as your last read. Read once
+  // per animation frame, every press is charged to the frame that noticed it, which averages half a frame
+  // against a Great zone only 33ms wide at the repair preset. So it is read on its own timer at 4ms, the rate
+  // the browser samples the device at. Nothing here can be swallowed by a focused control the way Space can.
+  const PADNAMES=['A / Cross','B / Circle','X / Square','Y / Triangle','LB / L1','RB / R1','LT / L2','RT / R2',
+                  'View / Share','Menu / Options','L3','R3','D-Up','D-Down','D-Left','D-Right','Guide'];
+  // Xbox name first, PlayStation second, and no guess at which one you hold: on Windows every XInput device
+  // reports the same id string, a DualSense through Steam included, so detection would be confidently wrong.
+  // Off the standard mapping an index promises nothing, so those get a number instead.
+  const padName=(g,b)=>(g&&g.mapping==='standard'&&PADNAMES[b])||('Button '+b);
+  const padList=()=>navigator.getGamepads?navigator.getGamepads():[];
+  let padT=setInterval(padPoll,500);   // until a pad appears there is nothing to sample fast, and a 4ms wakeup on a page people leave open is not free
+  const padRate=ms=>{ clearInterval(padT); padT=setInterval(padPoll,ms); };
+  function padPoll(){
+    if(document.hidden||!document.hasFocus())return;
+    const ps=padList(), t=now();
+    let bits=0, ts=0, g0=null;
+    for(let i=0;i<ps.length;i++){ const g=ps[i]; if(!g||!g.connected)continue; if(!g0)g0=g;
+      // Chrome stamps this on every 4ms sample, so it is the age of the snapshot and not the moment the
+      // button went down. Worth taking anyway: it survives OUR timer being late. Firefox jitters it and
+      // Safari returns seconds since boot, so it is checked against this clock rather than trusted.
+      if(g.timestamp>ts&&g.timestamp<=t&&t-g.timestamp<50) ts=g.timestamp;
+      for(let b=0;b<g.buttons.length&&b<=PADMAX;b++) if(g.buttons[b].pressed) bits|=1<<b; }   // .pressed flips at the driver's 30/255, the threshold the game reads too, so a trigger agrees with DBD about when you pressed
+    const was=padOn; padOn=!!g0;
+    if(was!==padOn){ padRate(padOn?4:500); padBits=bits;   // the press that wakes a pad cannot be timed, so it only wakes it; on the way out, a button held at unplug would stay masked and eat the next real press
+      if(!padOn&&st.running&&(hitBind.type==='pad'||startBind.type==='pad')) toggleRun();   // a Bluetooth pad that idled out leaves the loop spawning checks nobody can answer, and every one lands in the run as a miss
+      return; }
+    const rise=bits&~padBits; padBits=bits;
+    if(!rise||(st.running&&t-st.prevT>STALLMS))return;   // the loop is stalled: the next frame resyncs, and until it does there is no live check to score against
+    const b=31-Math.clz32(rise&-rise);   // the lowest new button; two first presses inside one 4ms poll is not something a person does
+    if(rebinding){ setBind(rebinding,{type:'pad',code:b,name:padName(g0,b)}); return; }
+    if(startBind.type==='pad'&&startBind.code===b) toggleRun();
+    else if(hitBind.type==='pad'&&hitBind.code===b&&st.running) onPress(Math.max(ts||t,st.t0));   // a chain stamps t0 and goes active in one tick, so a snapshot a few ms old can predate the check it is scored against
+  }
 
   // drop focus after a POINTER interaction, so the hit key is never eaten by the widget you just clicked.
   // Keyboard activation deliberately keeps focus, otherwise tabbing through the panel would be unusable.

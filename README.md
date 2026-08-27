@@ -23,7 +23,11 @@ Play it here: [andreistoicescu74015.github.io/DBD-Skillcheck-Trainer](https://an
 | Hit skill check | Space   | Rebindable                                   |
 | Open / close panel | Escape | Fixed                                       |
 
-Both actions take any key or mouse button, side buttons M4 and M5 included, so you can match what you use in game. On a touch screen there is no keyboard, so one tap starts the run and every tap after that is a hit.
+Both actions take any key, mouse button or controller button, side buttons M4 and M5 included, so you can match what you use in game. On a touch screen there is no keyboard, so one tap starts the run and every tap after that is a hit.
+
+A controller is invisible to the browser until you press a button on it, so press one before you hit Rebind. Button names are the standard layout, Xbox first and PlayStation second: on Windows every XInput device reports the same id, so a DualSense through Steam cannot be told from an Xbox pad.
+
+A pad has no input events, only a buffer the page reads, so a press reads slightly later than a key and a little looser. That is the browser polling the device, not you, and the game reads the same pad through the same path, so the delay is left in rather than subtracted. It is why runs hit with a pad are saved and compared apart from runs hit with a key.
 
 ## What it simulates
 
