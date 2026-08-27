@@ -111,8 +111,9 @@
   .sr span:first-child{color:var(--dim)}
   .sr b{font-variant-numeric:tabular-nums;font-weight:600}
   #trend{width:100%;height:52px;background:#0d0c09;border:1px solid var(--line);border-radius:10px;display:block;margin-top:8px}
-  .hr{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 0;
+  .hr{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 0;white-space:nowrap;
     border-top:1px solid var(--line);color:var(--dim);font-variant-numeric:tabular-nums}
+  .hr>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* a long preset name plus the zone suffix wrapped the row onto two lines; the name is the only cell that may be cut */
   .hr b{color:var(--dim);font-weight:600}
   .hr.on b{color:var(--great)}   /* the runs comparable to what you have set up right now */
   @media (prefers-reduced-motion: reduce){   /* the fade stays: it is what tells open from closed. The travel goes. */
@@ -469,9 +470,12 @@
     if (st.blank){   // both zones at 0%: an empty screen with no explanation reads as a broken app
       ring(cx,cy,R,T.ring,0,0);
       dctx.save(); dctx.fillStyle=C.warn; dctx.font='15px Segoe UI'; dctx.textAlign='center';
-      dctx.fillText(chained()&&cfg.greatPct>0   // blaming the sliders contradicts the Great slider sitting right there at 3%
-        ? (cfg.merciless?'Merciless Storm':'No Quarter')+' removes the Great zone, and this baseline has no Good band'
-        : 'Great and Good are both 0%, so there is no zone to hit', cx,cy+R+34); dctx.restore();
+      // two lines: on one, the chained sentence is over 500px and is clipped at both ends on any phone
+      (chained()&&cfg.greatPct>0   // blaming the sliders contradicts the Great slider sitting right there at 3%
+        ? [(cfg.merciless?'Merciless Storm':'No Quarter')+' removes the Great zone,','and this baseline has no Good band']
+        : ['Great and Good are both 0%,','so there is no zone to hit']
+      ).forEach((ln,i)=>dctx.fillText(ln,cx,cy+R+34+i*20));
+      dctx.restore();
       return;
     }
     if (st.phase==='active'||st.phase==='resolved'){
@@ -504,12 +508,16 @@
     }
     if (st.running){
       const fs=Math.round(11*Math.min(Math.max(k,1),2));
-      const stack=(cfg.hyper?Math.max(15,12*k):0)+(cfg.stake?Math.max(11,9*k):0)+Math.max(8,3*k);   // what still has to fit under the label, pip radius included
-      let below=Math.min(cy+R+needleDrop(k)+fs+4, VH-stack);   // clear of the needle at 6 o'clock, and inside the window at a 260px dial on a short screen
-
       const pn=activePreset();   // what you are training and how far in, so the panel can stay shut
       const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:'',
                    cfg.adaptive?Math.round(st.adapt*100)+'% zone':''].filter(Boolean).join('   ·   ');   // the staircase moves the zone mid-run, and the panel that says so is usually shut
+      // Reserve what is actually drawn below this point: the step down to the first pip row, the step
+      // between two pip rows, and the pip radius. Summing a hyper row whether or not one is drawn left a
+      // lone Stake Out row cut in half by the window bottom.
+      const rows=(cfg.hyper?1:0)+(cfg.stake?1:0);
+      const stack=rows ? (label?Math.max(15,12*k):0)+Math.max(0,rows-1)*Math.max(11,9*k)+Math.max(2,2.2*k)+2
+                       : Math.round(fs*0.3);
+      let below=Math.min(cy+R+needleDrop(k)+fs+4, VH-stack);   // clear of the needle at 6 o'clock, and inside the window at a 260px dial on a short screen
       if (label){ dctx.save(); dctx.fillStyle=C.idle; dctx.font=fs+'px Segoe UI';
         dctx.textAlign='center'; dctx.fillText(label,cx,below); dctx.restore(); below+=Math.max(15,12*k); }
       if (cfg.hyper){ pipRow(cx,below,MAXHYPER,st.hyperStacks,C.accent,k); below+=Math.max(11,9*k); }   // Hyperfocus tokens; they changed the speed by up to 24% with nothing on screen to say so
@@ -532,15 +540,17 @@
   }
   function drawSpawnArea(){
     const R=cfg.dialR, bw=Math.max(0,VW-2*R)*cfg.spawnArea, bv=Math.max(0,VH-2*R)*cfg.spawnArea;
-    // bounded the way placeDial() bounds the spawn itself, or the overlay promises the 360px column the open
-    // panel owns and you calibrate against a picture of somewhere no check can appear
-    const cx=VW/2, cy=VH/2, x=Math.max(0,cx-bw/2-R), y=cy-bv/2-R;
-    const w=Math.max(0,Math.min(panelRight(),cx+bw/2+R)-x), h=bv+2*R;
+    // Both edges bounded exactly the way placeDial() bounds the centre it picks. Clamping only the right one
+    // left the left edge outside the reachable range whenever the panel column bound, so the overlay drew a
+    // strip no check can land in and you calibrated against it.
+    const cx=VW/2, cy=VH/2, hiC=Math.max(R,panelRight()-R);
+    const lo=clamp(cx-bw/2,R,hiC), hi=clamp(cx+bw/2,R,hiC), mid=clamp(cx,R,hiC);   // mid is where a 0% spawn puts every dial
+    const x=lo-R, y=cy-bv/2-R, w=(hi-lo)+2*R, h=bv+2*R;
     dctx.save(); dctx.globalAlpha=clamp((spawnHintUntil-now())/400,0,1);
     dctx.fillStyle=rgba(C.accent,0.08); dctx.fillRect(x,y,w,h);
     dctx.setLineDash([10,7]); dctx.lineWidth=2; dctx.strokeStyle=C.accent; dctx.strokeRect(x,y,w,h); dctx.setLineDash([]);
     dctx.strokeStyle=rgba(C.accent,0.75); dctx.lineWidth=1.5; dctx.beginPath();
-    dctx.moveTo(cx-9,cy); dctx.lineTo(cx+9,cy); dctx.moveTo(cx,cy-9); dctx.lineTo(cx,cy+9); dctx.stroke();
+    dctx.moveTo(mid-9,cy); dctx.lineTo(mid+9,cy); dctx.moveTo(mid,cy-9); dctx.lineTo(mid,cy+9); dctx.stroke();
     dctx.fillStyle=C.accent; dctx.font='12px Segoe UI'; dctx.textAlign='center';
     dctx.fillText('spawn area', x+w/2, y>20?y-8:y+18);
     dctx.restore();
@@ -977,9 +987,14 @@
   ['mouseup','auxclick'].forEach(ev=>window.addEventListener(ev,e=>{ if(matchMouse(hitBind,e)||matchMouse(startBind,e))e.preventDefault(); },true));
   // There is no keyboard on a phone, so the dial itself is the button. preventDefault also stops the
   // synthetic mousedown, so a hit bound to Mouse L cannot fire twice off one tap.
+  // Contacts that are not on the dial do not count: the panel scrolls, so a thumb parked on it is ordinary,
+  // and counting it made every tap a no-op. A second finger ON the dial during a chain lands on a check that
+  // is milliseconds old, and that is the one that used to book a certain miss on top of the hit you meant.
+  const dialTouches=e=>{ let n=0; const ts=e.touches||[];
+    for(let i=0;i<ts.length;i++) if(!overUI({target:(ts[i]&&ts[i].target)||e.target})) n++; return n; };
   window.addEventListener('touchstart',e=>{
     if(overUI(e)||$('summary').contains(e.target)||!$('summary').classList.contains('hidden'))return;
-    if(e.touches.length>1)return;   // in a chain the second finger lands on a check that is milliseconds old, so it booked a certain miss on top of the hit you meant
+    if(dialTouches(e)>1)return;
     e.preventDefault(); if(!st.running)toggleRun(); else onPress(e.timeStamp); },{passive:false});
   window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
 
