@@ -224,7 +224,7 @@
     <div class="btns"><button class="b" id="btn-default">Reset settings</button></div>
     <input type="file" id="imp" accept="application/json" style="display:none" />
     <div class="note">Profile auto-saves · Export / Import moves settings, stats and run history together · Rebind takes a key, a mouse button (<b>M4 / M5</b> included) or a controller button. Reset settings wipes your calibration and asks first; it leaves stats and history alone.</div>
-    <div class="note">A controller is invisible to the browser until you press a button on it, so press one before you hit Rebind. Button names are the standard layout, Xbox first and PlayStation second. A pad press reads about <b>5 to 8ms later</b> than a key and about twice as loose, which is the browser polling it and not you, so pad runs are saved and compared apart from keyboard runs.</div>
+    <div class="note">A controller is invisible to the browser until you press a button on it, so press one before you hit Rebind. Button names are the standard layout, Xbox first and PlayStation second. A pad has no input events, only a buffer this page reads, so a press reads <b>slightly later</b> than a key and a little looser. That is the browser polling it and not you, so pad runs are saved and compared apart from keyboard runs.</div>
     </details>
   </div>
 
@@ -619,8 +619,8 @@
 
   // ---------- history ----------
   // A run is only comparable with one set up the same way, so the key carries the baseline, the perks,
-  // whether the staircase was on, and what you hit with: a pad press reads about 6ms later than a key and
-  // roughly twice as loose, which moves great% on its own. Everything else in the row is there to be read.
+  // whether the staircase was on, and what you hit with: a pad press reads later than a key and a little
+  // looser, enough to move great% on its own. Everything else in the row is there to be read.
   const PERKS=['unnerving','injured','hyper','coulro','stake','doctor','lullaby','merciless','noquarter'];
   const perkList=()=>PERKS.filter(k=>cfg[k]);
   function baseKey(){ const p=activePreset();
@@ -881,9 +881,9 @@
 
   // ---------- gamepad ----------
   // A pad fires no events: it is a buffer you read, so a press is only as fresh as your last read. Read once
-  // per animation frame, every press is charged to the frame that noticed it, a mean +14ms against a Great
-  // zone 33ms wide at the repair preset. So it is read on its own timer at 4ms, the rate the browser samples
-  // the device at. Nothing here can be swallowed by a focused control the way Space can: there is no event.
+  // per animation frame, every press is charged to the frame that noticed it, which averages half a frame
+  // against a Great zone only 33ms wide at the repair preset. So it is read on its own timer at 4ms, the rate
+  // the browser samples the device at. Nothing here can be swallowed by a focused control the way Space can.
   const PADNAMES=['A / Cross','B / Circle','X / Square','Y / Triangle','LB / L1','RB / R1','LT / L2','RT / R2',
                   'View / Share','Menu / Options','L3','R3','D-Up','D-Down','D-Left','D-Right','Guide'];
   // Xbox name first, PlayStation second, and no guess at which one you hold: on Windows every XInput device
