@@ -214,6 +214,7 @@
     <label class="sl" for="r-vol">Volume: <span class="val" id="v-vol"></span></label>
     <input type="range" id="r-vol" min="0" max="100" step="5" value="70" />
     <div class="note">Release the slider to hear a Great at that level.</div>
+    <div class="note" id="latnote"></div>
 
     <details class="sec" id="d-controls">
     <summary>Controls &amp; profile</summary>
@@ -295,7 +296,16 @@
 
   // ---------- audio (synthesized; not the game's files) ----------
   let ac=null,master=null;
-  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);} master.gain.value=cfg.vol; if(ac.state==='suspended')ac.resume(); return ac; }
+  function actx(){ if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);
+      ac.addEventListener('statechange',latNote); }   // the numbers below only mean anything once the context is actually running, which resume() reaches asynchronously
+    master.gain.value=cfg.vol; if(ac.state==='suspended')ac.resume(); latNote(); return ac; }
+  // The cue is scheduled at t0 but leaves the speakers later, and the trainer scores you against t0. The gap
+  // is the browser's buffer plus the output device, so say the number instead of letting the beep quietly
+  // teach a press that late. outputLatency is absent in Safari and baseLatency on older engines, so treat
+  // what comes back as a floor and say nothing rather than print a number that is mostly missing.
+  function latNote(){ const el=$('latnote'); if(!el)return;
+    const l=(ac&&ac.state==='running') ? ((ac.baseLatency||0)+(ac.outputLatency||0))*1000 : 0;
+    el.textContent = l>=10 ? 'The warning sound reaches you about '+Math.round(l)+'ms after the check starts. That is this browser and your output device, not the trainer, and Bluetooth headphones add far more. Train to the dial.' : ''; }
   function setVol(){ if(master)master.gain.value=cfg.vol; }
   function tone(f,dur,vol,type,when,f2){ const c=actx(),t=c.currentTime+(when||0),o=c.createOscillator(),g=c.createGain();
     o.type=type||'sine';o.frequency.setValueAtTime(f,t); if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
