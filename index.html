@@ -256,8 +256,11 @@
   const dial=$('dial'), dctx=dial.getContext('2d');
   const meter=$('meter'), mctx=meter.getContext('2d');
   const trend=$('trend'), tctx=trend.getContext('2d');
-  const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
+  // LSKEY never changes: renaming it orphans every existing profile. The v10 in it is frozen history, and
+  // migrations key off p.v against PVER inside applyProfile, which is the number to bump.
+  const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the BASER reference dial, scaled by R/BASER in annulus(). FAILMS: ring-flash duration on a miss.
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
+  const RECENTN=60;                       // checks kept for the rolling form readout and the meter, in the store as well as in memory
   const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
   const BACKMS=50;                        // the most a chained link may be backdated to the instant the last one ended: a 100-400ms hitch slips under STALLMS, and an unbounded backdate opens the next link past its own band
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
@@ -280,6 +283,10 @@
     authentic:{ ring:'rgba(223,231,243,0.5)', good:C.zone,  great:'#ffffff', glow:'rgba(255,255,255,0.65)', needle:'#ff3b3b' },
     contrast: { ring:'rgba(160,172,188,0.5)', good:'#cfd8e2', great:C.great, glow:rgba(C.great,0.6),        needle:'#ff4d4d' },
   };
+  // Adding a perk touches: the checkbox in the panel, CB, BOOLS, DEFAULTS below, PERKS if it belongs in a
+  // run's identity, computeEff() or register() for what it does, and conflicts() if it only applies to some
+  // actions. Adding a slider touches: the input in the panel, NUMS, DEFAULTS, RANGE (whose pair must match
+  // that input's min and max) and syncSliders(). Nothing checks these at runtime, so they are listed here.
   const DEFAULTS = { revMs:1100, greatPct:3, goodPct:10, gapMs:400, dialR:60, posMin:120, posMax:320, spawnArea:0.5,
     // blockPx 7 draws the band that the calibrated 5 used to draw, now that the outline no longer spills past it
     blockPx:7, needlePx:4, needleLen:50, vol:0.7, sessN:0, unnerving:false, injured:false, hyper:false, coulro:false, stake:false, doctor:false, lullaby:false, merciless:false, noquarter:false, adaptive:false, contrast:false, audio:true, showMs:true, showFps:false,
@@ -302,7 +309,7 @@
                eff:{revMs:1100,greatDeg:10.8,goodDeg:46.8,greatPct:3,goodPct:10}, ox:0, oy:0, spin:1, n0:0, nextAt:0, hyperStacks:0,
                stakeTokens:0, stakeAt:0, adapt:1, okRun:0, arc:null, prevT:0, away:false };
   const stats = { att:0, great:0, good:0, miss:0, streak:0, best:0 };
-  const recent=[];   // last 60 checks, for the rolling form readout
+  const recent=[];   // the last RECENTN checks, for the rolling form readout
   const sess=[];     // the current run only, for the end-of-session summary
   const hist=[];     // one row per finished session, oldest first, so a run can be compared with the last comparable one
 
@@ -352,6 +359,8 @@
     const good  = cfg.goodPct  * (cfg.unnerving?0.4:1);  // Unnerving −60% shrinks ONLY good
     const a = cfg.adaptive ? st.adapt : 1;               // the staircase scales the whole success zone, so the check keeps its shape and only its width moves
     const total = (great + good) * a;                    // white success zone = great (front) + good (after)
+    // goodDeg is where the WHOLE band ends (great + good); goodPct is the Good slice on its own. The two
+    // are named on the same pattern and are not the same quantity, and classify() reads goodDeg as the end.
     return { revMs, greatDeg:great*a/100*360, goodDeg:total/100*360, greatPct:great*a, goodPct:good*a };
   }
   function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
@@ -370,7 +379,7 @@
     st.n0=0; st.needle=0; st.zoneStart = st.spin*rollZone();   // leading edge, ahead of 12 o'clock, where the needle starts
     st.t0=now(); st.phase='active'; SND.appear();
   }
-  const panelRight=()=>cfg.menuOpen?Math.max(2*cfg.dialR,VW-360):VW;   // the open panel owns the right 350px
+  const panelRight=()=>cfg.menuOpen?Math.max(2*cfg.dialR,VW-360):VW;   // the column the open panel owns: 336px of panel, 14px of inset, 10px of clearance. Not measured from the element: #menu.hidden carries a transform and a transition, so its rect is wrong while it animates and while it is shut
   function centreX(){ const R=cfg.dialR;   // centred, unless the window is narrow enough that the panel would cover the dial
     return Math.max(R+8, Math.min(VW/2, panelRight()-R-8)); }
   function placeDial(){   // centre, or a random spot in the Spawn area under Madness, never under the open panel
@@ -398,7 +407,7 @@
     const ok = kind==='great' || (noGreat && kind==='good');   // one bar, shared by the streak above, the staircase here and the summary's best-streak row
     adaptStep(ok);
     if (cfg.hyper||cfg.adaptive) updateEffLabels();
-    recent.push({ms:pressed?signedMs:null, kind, conv}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
+    recent.push({ms:pressed?signedMs:null, kind, conv}); if(recent.length>RECENTN)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
     if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind, conv, ok});   // only a bounded run needs a transcript; Free mode would grow it forever. ok travels with the entry, or the summary would rescore the run against whatever the perks are when it ends
     // the feedback arc is drawn from a snapshot: in a chain the live values below are overwritten before it ever gets drawn
     st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
@@ -644,7 +653,7 @@
   // ---------- end-of-session summary ----------
   function endSession(){
     if(st.running)toggleRun();
-    const n=sess.length, sp=clamp(Math.round(p90Of(sess)*1.15),60,MSMAX);   // the run's own spread. meterSpan() describes the last 60 checks overall, which can be a different preset entirely, so a tight recent stretch used to report every earlier error in this run as 60ms
+    const n=sess.length, sp=clamp(Math.round(p90Of(sess)*1.15),60,MSMAX);   // the run's own spread. meterSpan() describes the last RECENTN checks overall, which can be a different preset entirely, so a tight recent stretch used to report every earlier error in this run as 60ms
     const cnt=k=>sess.filter(r=>r.kind===k).length, pct=c=>Math.round(c/n*100);
     const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const mabs=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>Math.abs(clamp(r.ms,-sp,sp))); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
@@ -788,7 +797,7 @@
         startBind = (hitBind.type==='key'&&hitBind.code==='Enter') ? {type:'key',code:'Space',name:'Space'} : {type:'key',code:'Enter',name:'Enter'}; }
     if(p.stats){ ['att','great','good','miss','streak','best'].forEach(k=>{const v=p.stats[k]; if(typeof v==='number'&&isFinite(v))stats[k]=Math.max(0,Math.round(v));});
       recent.length=0;
-      if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-60).forEach(r=>{
+      if(Array.isArray(p.stats.recent)) p.stats.recent.slice(-RECENTN).forEach(r=>{
         if(r&&KINDS.indexOf(r.kind)>=0) recent.push({ms:(typeof r.ms==='number'&&isFinite(r.ms))?clamp(r.ms,-MSMAX,MSMAX):null, kind:r.kind, conv:!!r.conv}); }); }
     clearedAt=Math.max(clearedAt,cnt(p.cleared));
     if(Array.isArray(p.hist)){ hist.length=0;
@@ -796,7 +805,7 @@
     setVol(); syncUI(); updateStats(); renderHistory(); if(migrated)saveNow(); }   // write the migration through so it happens once, not on every load
   function resetDefaults(){ if(st.running)toggleRun(); Object.assign(cfg,JSON.parse(JSON.stringify(DEFAULTS)));
     hitBind={type:'key',code:'Space',name:'Space'}; startBind={type:'key',code:'Enter',name:'Enter'};
-    setVol(); syncUI(); saveProfile(); }
+    setVol(); syncUI(); updateStats(); renderHistory(); saveProfile(); }   // ends the way applyProfile does: without these the meter kept shading the old great window and History kept the highlight on the pre-reset baseline
 
   // ---------- UI sync ----------
   function syncSliders(){
