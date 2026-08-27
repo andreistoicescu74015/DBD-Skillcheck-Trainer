@@ -32,7 +32,9 @@
     border:1px solid var(--line);background:rgba(26,22,17,0.8);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--txt);
     font-size:20px;cursor:pointer;transition:transform .25s,filter .2s;display:flex;align-items:center;justify-content:center}
   #gear:hover{filter:brightness(1.25);transform:rotate(35deg)}
-  #menu{position:fixed;top:68px;right:14px;width:336px;max-height:calc(100vh - 84px);overflow-y:auto;z-index:9;
+  /* dvh second, so a browser without it keeps the old value: on iOS the toolbars live inside 100vh, and
+     overflow-y only scrolls WITHIN the box, so the last 40 to 75px of panel could not be brought into view */
+  #menu{position:fixed;top:68px;right:14px;width:336px;max-height:calc(100vh - 84px);max-height:calc(100dvh - 84px);overflow-y:auto;z-index:9;
     background:var(--panel);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
     padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.5);
     transition:opacity .2s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s;transform-origin:top right}
@@ -67,7 +69,7 @@
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #14110c}
   input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
   input[type=range]:disabled{opacity:.3;cursor:not-allowed}
-  label.sl.off{opacity:.4}
+  label.sl.off{opacity:.65}   /* the range below it is already at .3, so the control still reads as off without dimming its explanation to 2:1 */
   .sw input:focus-visible + .track,
   input[type=range]:focus-visible,
   button:focus-visible{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
@@ -99,7 +101,9 @@
   .chip.on{background:var(--accent);border-color:transparent;color:#231007;font-weight:600}
   #summary{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;width:320px;
     background:var(--panel);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;
-    padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+    padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+    /* nine rows on a landscape phone ran the Again and Close buttons off the bottom with nothing to scroll */
+    max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto}
   #summary.hidden{display:none}
   #summary .st{font-size:16px;font-weight:800}
   #summary .sn{font-size:11px;color:var(--dim);margin-bottom:12px}
@@ -111,17 +115,21 @@
     border-top:1px solid var(--line);color:var(--dim);font-variant-numeric:tabular-nums}
   .hr b{color:var(--dim);font-weight:600}
   .hr.on b{color:var(--great)}   /* the runs comparable to what you have set up right now */
+  @media (prefers-reduced-motion: reduce){   /* the fade stays: it is what tells open from closed. The travel goes. */
+    #menu{transition:opacity .2s ease,visibility 0s} #menu.hidden{transform:none;transition:opacity .2s ease,visibility 0s .2s}
+    #gear{transition:filter .2s} #gear:hover{transform:none} button.b:hover{transform:none}
+  }
   @media (max-width:430px){      /* on a phone the panel takes the width it needs and the dial sits behind it */
-    #menu{width:auto;left:8px;right:8px;top:62px;max-height:calc(100vh - 74px)}
+    #menu{width:auto;left:8px;right:8px;top:62px;max-height:calc(100vh - 74px);max-height:calc(100dvh - 74px)}
     #summary{width:auto;left:12px;right:12px;transform:translateY(-50%);margin:0}
   }
 </style>
 </head>
 <body>
-  <canvas id="dial"></canvas>
+  <canvas id="dial" aria-label="Skill check dial">The skill check dial is drawn here. Every check is also announced by sound. Use the menu for stats and settings.</canvas>
   <div id="hint"><span class="keys"><kbd id="startname">Enter</kbd> start / stop · <kbd id="hitname">Space</kbd> hit</span><span class="touch">Tap anywhere to start, then tap to hit</span> · ⚙ menu top-right</div>
 
-  <button id="gear" title="Menu">&#9881;</button>
+  <button id="gear" title="Menu" aria-label="Menu" aria-expanded="true" aria-controls="menu">&#9881;</button>
   <div id="menu" class="hidden">
     <div class="title">Skill Check Trainer</div>
     <div class="subtitle">Train your great-skill-check timing · wiki-calibrated</div>
@@ -496,7 +504,9 @@
     }
     if (st.running){
       const fs=Math.round(11*Math.min(Math.max(k,1),2));
-      let below=cy+R+needleDrop(k)+fs+4;   // clear of the needle: at 6 o'clock it used to run straight through this line
+      const stack=(cfg.hyper?Math.max(15,12*k):0)+(cfg.stake?Math.max(11,9*k):0)+Math.max(8,3*k);   // what still has to fit under the label, pip radius included
+      let below=Math.min(cy+R+needleDrop(k)+fs+4, VH-stack);   // clear of the needle at 6 o'clock, and inside the window at a 260px dial on a short screen
+
       const pn=activePreset();   // what you are training and how far in, so the panel can stay shut
       const label=[pn?PNAME[pn]:'', cfg.sessN?Math.min(sess.length,cfg.sessN)+' / '+cfg.sessN:'',
                    cfg.adaptive?Math.round(st.adapt*100)+'% zone':''].filter(Boolean).join('   ·   ');   // the staircase moves the zone mid-run, and the panel that says so is usually shut
@@ -522,14 +532,17 @@
   }
   function drawSpawnArea(){
     const R=cfg.dialR, bw=Math.max(0,VW-2*R)*cfg.spawnArea, bv=Math.max(0,VH-2*R)*cfg.spawnArea;
-    const cx=VW/2, cy=VH/2, x=cx-bw/2-R, y=cy-bv/2-R, w=bw+2*R, h=bv+2*R;
+    // bounded the way placeDial() bounds the spawn itself, or the overlay promises the 360px column the open
+    // panel owns and you calibrate against a picture of somewhere no check can appear
+    const cx=VW/2, cy=VH/2, x=Math.max(0,cx-bw/2-R), y=cy-bv/2-R;
+    const w=Math.max(0,Math.min(panelRight(),cx+bw/2+R)-x), h=bv+2*R;
     dctx.save(); dctx.globalAlpha=clamp((spawnHintUntil-now())/400,0,1);
     dctx.fillStyle=rgba(C.accent,0.08); dctx.fillRect(x,y,w,h);
     dctx.setLineDash([10,7]); dctx.lineWidth=2; dctx.strokeStyle=C.accent; dctx.strokeRect(x,y,w,h); dctx.setLineDash([]);
     dctx.strokeStyle=rgba(C.accent,0.75); dctx.lineWidth=1.5; dctx.beginPath();
     dctx.moveTo(cx-9,cy); dctx.lineTo(cx+9,cy); dctx.moveTo(cx,cy-9); dctx.lineTo(cx,cy+9); dctx.stroke();
     dctx.fillStyle=C.accent; dctx.font='12px Segoe UI'; dctx.textAlign='center';
-    dctx.fillText('spawn area', cx, y>20?y-8:y+18);
+    dctx.fillText('spawn area', x+w/2, y>20?y-8:y+18);
     dctx.restore();
   }
   // One check: ring, success band, great band and needle. The live check, the resolved one and the
@@ -832,10 +845,11 @@
   function syncSpawnEnabled(){ $('r-spawn').disabled=!cfg.doctor; $('l-spawn').classList.toggle('off',!cfg.doctor); }   // the value is only read inside the Madness branches
   function syncBinds(){ $('hitname').textContent=hitBind.name;$('hitname2').textContent=hitBind.name;$('startname').textContent=startBind.name;$('startname2').textContent=startBind.name; }
   function syncUI(){ for(const id in CB)$(id).checked=cfg[CB[id]]; syncBinds(); syncSliders();
-    $('menu').classList.toggle('hidden',!cfg.menuOpen);
+    $('menu').classList.toggle('hidden',!cfg.menuOpen); $('gear').setAttribute('aria-expanded',cfg.menuOpen?'true':'false');
     $('d-appearance').open=cfg.openAppearance; $('d-controls').open=cfg.openControls; $('d-history').open=cfg.openHistory; }
   function setMenu(open){ cfg.menuOpen=open; $('menu').classList.toggle('hidden',!open);
-    if(st.phase!=='active'){ st.ox=centreX(); }   // on a narrow window the dial slides clear of the panel
+    $('gear').setAttribute('aria-expanded',open?'true':'false');
+    if(st.phase!=='active'){ st.ox=centreX(); st.arc=null; st.msAt=0; }   // on a narrow window the dial slides clear of the panel, and the feedback from the last check carries its own position, so drop it rather than leave it floating where the dial was
     saveProfile(); }
 
   // ---------- controls ----------
@@ -908,10 +922,15 @@
     dctx.setTransform(dpr,0,0,dpr,0,0);                   // resizing a canvas resets its state, so this must come after
     MW=fitCanvas(meter,mctx,MW,MH); TW=fitCanvas(trend,tctx,MW,TH);   // the trend shares the meter's column, so that is the right fallback width
     drawMeter(); renderHistory();
-    if(st.phase!=='active'){ st.ox=centreX(); st.oy=VH/2; }
+    if(st.phase!=='active'){ st.ox=centreX(); st.oy=VH/2; st.arc=null; st.msAt=0; }   // same as setMenu: feedback carries the old position
     else { const R=cfg.dialR;   // a Madness check placed for the old size must not end up off-screen
       st.ox=clamp(st.ox,R,Math.max(R,VW-R)); st.oy=clamp(st.oy,R,Math.max(R,VH-R)); } }
   window.addEventListener('resize',fit);
+  // Dragging the window between a 1x and a 2x display changes devicePixelRatio without a resize event, and
+  // the canvases keep their old backing store until something else refits them. The query is pinned to the
+  // ratio it was built with, so it has to be rebuilt each time; browser zoom fires resize and is already covered.
+  (function watchDpr(){ matchMedia('(resolution:'+(window.devicePixelRatio||1)+'dppx)')
+    .addEventListener('change',()=>{ fit(); watchDpr(); },{once:true}); })();
   playBtn('btn-fs',()=>{ if(!document.fullscreenElement)document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
   $('btn-export').addEventListener('click',()=>{ const blob=new Blob([JSON.stringify(profileObj(),null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dbd-skillcheck-profile.json'; a.click(); URL.revokeObjectURL(a.href); });
@@ -960,6 +979,7 @@
   // synthetic mousedown, so a hit bound to Mouse L cannot fire twice off one tap.
   window.addEventListener('touchstart',e=>{
     if(overUI(e)||$('summary').contains(e.target)||!$('summary').classList.contains('hidden'))return;
+    if(e.touches.length>1)return;   // in a chain the second finger lands on a check that is milliseconds old, so it booked a certain miss on top of the hit you meant
     e.preventDefault(); if(!st.running)toggleRun(); else onPress(e.timeStamp); },{passive:false});
   window.addEventListener('contextmenu',e=>{ if((hitBind.type==='mouse'&&hitBind.code===2)||(startBind.type==='mouse'&&startBind.code===2))e.preventDefault(); });
 
