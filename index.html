@@ -246,6 +246,7 @@
   const LSKEY='dbd_sc_profile_v10', PVER=12, MAXHYPER=6, GLOW=12, FAILMS=160;   // GLOW: great-zone blur at the default dial size, now scaled with it. FAILMS: ring-flash duration on a miss.
   const MAXSTAKE=4, STAKEMS=15000;        // Stake Out banks one token every 15s, up to 4
   const PADMAX=30;                        // highest pad button the poll reports: the held mask is a 32-bit int and bit 31 would make it negative. No pad has half this many
+  const BACKMS=50;                        // the most a chained link may be backdated to the instant the last one ended: a 100-400ms hitch slips under STALLMS, and an unbounded backdate opens the next link past its own band
   const ARCMS=650, STALLMS=400, HISTN=60; // ARCMS: how long the hit arc survives into the next check. STALLMS: a frame gap this long means the page stopped, not that you were slow. HISTN: sessions kept.
   const MSMAX=2000;                       // no real error is bigger than a rotation, and the meter draws one gridline per 100ms across the span
   const MAXDATE=8.64e15;                  // the largest instant a Date can hold; past it new Date() is Invalid and a history row renders as NaN/NaN
@@ -343,12 +344,17 @@
   function adaptStep(ok){ if(!cfg.adaptive)return;   // 3 in a row tightens it, one drop loosens it
     if(ok){ if(++st.okRun>=ADAPTRUN){ st.okRun=0; st.adapt=clamp(st.adapt*ADAPTDN,ADAPTMIN,ADAPTMAX); } }
     else { st.okRun=0; st.adapt=clamp(st.adapt*ADAPTUP,ADAPTMIN,ADAPTMAX); } }
+  // Offset from where the needle starts to the band's leading edge, in the spin direction. The band has to
+  // finish before that angle: past 360 its tail wraps back onto it, drawn white but scored as a miss, because
+  // classify() reads a press there as sitting before the leading edge rather than after the trailing one.
+  // Both entry points roll through here, or the clamp holds on a fresh check and not on a chained one.
+  function rollZone(){ const mx=Math.max(0,360-st.eff.goodDeg);
+    const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),mx), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),mx);
+    return lo+Math.random()*(hi-lo); }
   function startCheck(){
     st.eff=computeEff();
-    const maxStart=Math.max(0,360-st.eff.goodDeg);   // the zone must finish before the needle's 12 o'clock start, or the drawn tail would score as a miss
-    const lo=Math.min(Math.min(cfg.posMin,cfg.posMax),maxStart), hi=Math.min(Math.max(cfg.posMin,cfg.posMax),maxStart);
     placeDial(); st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;   // Madness reverses the sweep at random
-    st.n0=0; st.needle=0; st.zoneStart = st.spin*(lo + Math.random()*(hi-lo));   // leading edge, ahead of 12 o'clock in the spin direction
+    st.n0=0; st.needle=0; st.zoneStart = st.spin*rollZone();   // leading edge, ahead of 12 o'clock, where the needle starts
     st.t0=now(); st.phase='active'; SND.appear();
   }
   const panelRight=()=>cfg.menuOpen?Math.max(2*cfg.dialR,VW-360):VW;   // the open panel owns the right 350px
@@ -362,41 +368,48 @@
     st.ox=clamp(VW/2+(Math.random()-0.5)*bw, R, Math.max(R,right-R));
     st.oy=clamp(VH/2+(Math.random()-0.5)*bv, R, Math.max(R,VH-R));
   }
+  const idealDeg=(gd,wd)=>(gd>0?gd:wd)/2;   // the middle of the window you are scored against, and the only thing "on time" can mean. Written once: the arc, the ms readout and the meter all have to aim at the same angle
   function classify(ang){ const d=st.spin*(ang-st.zoneStart);   // progress past the leading edge, in the spin direction
     if(st.eff.greatDeg>0&&d>=0&&d<=st.eff.greatDeg)return'great'; if(d>st.eff.greatDeg&&d<=st.eff.goodDeg)return'good'; return'miss'; }
 
-  function register(kind, signedMs, pressed){
-    const t=now(); let conv=false;
+  function register(kind, signedMs, pressed, endT){
+    const t=now(), noGreat=st.eff.greatDeg<=0; let conv=false;   // a chained perk zeroes it, and so does a hand-tuned Great 0%: on either, a Good is the best the check could have gone
     if (kind==='good' && cfg.stake && st.stakeTokens>0){ st.stakeTokens--; kind='great'; conv=true; }   // Stake Out spends a token to turn a Good into a Great, which is why the combo feeds Hyperfocus
     stats.att++;
     if (kind==='great'){ stats.great++; stats.streak++; stats.best=Math.max(stats.best,stats.streak);
       if(cfg.hyper)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); SND.great(); }
     else {
-      if(kind==='good'){ stats.good++; if(chained()){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
-        if(cfg.hyper){ if(st.eff.greatDeg<=0)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); else st.hyperStacks=0; } SND.good(); }   // no Great zone → Hyperfocus builds on Good instead
+      if(kind==='good'){ stats.good++; if(noGreat){stats.streak++;stats.best=Math.max(stats.best,stats.streak);}else stats.streak=0;
+        if(cfg.hyper){ if(noGreat)st.hyperStacks=Math.min(MAXHYPER,st.hyperStacks+1); else st.hyperStacks=0; } SND.good(); }   // no Great zone → Hyperfocus builds on Good instead
       else { stats.miss++; stats.streak=0; if(cfg.hyper)st.hyperStacks=0; st.failAt=now(); SND.fail(!pressed); } }   // failAt drives the ring flash, the only visual a timed-out miss gets
-    adaptStep(kind==='great' || (st.eff.greatDeg<=0 && kind==='good'));   // same bar the streak uses: a great, or a good where no great exists
+    const ok = kind==='great' || (noGreat && kind==='good');   // one bar, shared by the streak above, the staircase here and the summary's best-streak row
+    adaptStep(ok);
     if (cfg.hyper||cfg.adaptive) updateEffLabels();
     recent.push({ms:pressed?signedMs:null, kind, conv}); if(recent.length>60)recent.shift();   // timeouts go in too, or "recent form" would count a different set of checks than the counters do
-    if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind, conv});   // only a bounded run needs a transcript; Free mode would grow it forever
+    if (cfg.sessN) sess.push({ms:pressed?signedMs:null, kind, conv, ok});   // only a bounded run needs a transcript; Free mode would grow it forever. ok travels with the entry, or the summary would rescore the run against whatever the perks are when it ends
     // the feedback arc is drawn from a snapshot: in a chain the live values below are overwritten before it ever gets drawn
     st.arc = pressed ? {zs:st.zoneStart, gd:st.eff.greatDeg, wd:st.eff.goodDeg, hit:st.needle, spin:st.spin, kind, conv, ox:st.ox, oy:st.oy, at:t} : null;
     if (pressed){ st.lastMs=signedMs; st.lastKind=kind; st.lastConv=conv; st.msX=st.ox; st.msY=st.oy; st.msAt=now(); }
+    else st.msAt=0;   // the number from the check you hit used to survive its 650ms into the next one and sit on top of that one's red flash
     updateStats(); saveProfile();
     if (chained()){   // the chain continues from the retained needle angle, on ANY end (success OR fail)
-      const lo=Math.min(cfg.posMin,cfg.posMax), hi=Math.max(cfg.posMin,cfg.posMax);
       st.eff=computeEff();
       st.spin = cfg.doctor ? (Math.random()<0.5?-1:1) : 1;          // Madness may flip the sweep direction each link
-      st.n0=st.needle; st.t0=now();                                  // keep sweeping from the retained ending angle
-      st.zoneStart=st.n0+st.spin*(lo+Math.random()*(hi-lo)); st.phase='active';   // next leading edge, ahead in the (maybe new) spin
+      // keep sweeping from the retained ending angle, at the instant it ended: charging the chain for the
+      // input latency made every link a little slower than the panel claims. Bounded, because a 100-400ms
+      // stall passes the STALLMS test and would otherwise hand the next link a window already behind it.
+      st.n0=st.needle; st.t0=Math.max(endT||now(), now()-BACKMS);
+      st.zoneStart=st.n0+st.spin*rollZone(); st.phase='active';      // next leading edge, ahead in the (maybe new) spin
+      // deliberately no SND.appear() here: the chain is one continuous check and the cue belongs to its start
       placeDial();                                                   // Madness may relocate; off mid-chain it recentres
     } else {
       st.phase='resolved'; st.nextAt=t+cfg.gapMs+Math.random()*Math.min(120,cfg.gapMs);   // jitter scales with the pause, so 0 really is 0
     }
     if (cfg.sessN && sess.length>=cfg.sessN) endSession();
   }
-  function onPress(ts){ if(st.phase!=='active')return; const om=360/st.eff.revMs, ang=st.n0+st.spin*(ts-st.t0)*om;
-    st.needle=ang; const d=st.spin*(ang-st.zoneStart), idc=(st.eff.greatDeg>0?st.eff.greatDeg:st.eff.goodDeg)/2; register(classify(ang),(d-idc)/om,true); }
+  function onPress(ts){ if(st.phase!=='active'||ts<st.t0)return;   // a chain stamps t0 and goes active in one tick, so a press timed just before that belongs to the link that already resolved
+    const om=360/st.eff.revMs, ang=st.n0+st.spin*(ts-st.t0)*om;
+    st.needle=ang; const d=st.spin*(ang-st.zoneStart), idc=idealDeg(st.eff.greatDeg,st.eff.goodDeg); register(classify(ang),(d-idc)/om,true,ts); }
 
   // ---------- loop ----------
   function frame(){
@@ -406,20 +419,25 @@
     // score the presses you are making in the game. The keyboard had the milder version: alt-tab away and
     // the run filled with timeouts instead. Freeze rather than blank, and let resync drop the check on return.
     if (!document.hasFocus()){ st.away=true; render(); return; }
-    const t=now(), dt=t-(st.prevT||t); st.prevT=t; st.blank=false;
+    const t=now(), dt=t-(st.prevT||t); st.prevT=t;
     if(cfg.showFps){ const df=t-(st.lastFrameT||t); st.lastFrameT=t; if(df>0)st.fps=st.fps?st.fps*0.9+100/df:1000/df; }
-    if (st.running && (st.away||dt>STALLMS)) resync(t);   // the page stopped, you did not
+    st.blank = computeEff().goodDeg<=0;   // 0% zone: nothing to run and nothing to draw. Tested outside the running branch, or a stopped app with both sliders at zero showed a bare ring and no reason for it
+    if (st.blank) st.phase='idle';
+    else if (st.running && (st.away||dt>STALLMS)) resync(t,st.away);   // the page stopped, you did not
     else if (st.running){
       padPoll();   // ahead of the timeout test below: a press in the last few ms of the zone must not be beaten to it by the frame that ends the check
       // The poll can stop the run from inside this branch: start bound to a pad, the pad unplugged, or a pad
       // hit finishing a bounded session. All three leave phase 'idle', which is what the chain below starts
       // on, so without this the stop was followed by a check nothing could ever advance or resolve.
       if (st.running){
-        if (computeEff().goodDeg<=0){ st.phase='idle'; st.blank=true; }   // 0% zone (great & good both 0) → don't run, draw nothing
-        else if (st.phase==='active'){ st.needle=st.n0+st.spin*(t-st.t0)*(360/st.eff.revMs); if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg) register('miss',0,false); }
+        if (st.phase==='active'){ const om=360/st.eff.revMs; st.needle=st.n0+st.spin*(t-st.t0)*om;
+          if(st.spin*(st.needle-st.zoneStart)>st.eff.goodDeg){                     // it expired somewhere inside the frame that noticed, so resolve it where it really did
+            st.needle=st.zoneStart+st.spin*st.eff.goodDeg;
+            register('miss',0,false,st.t0+(st.spin*(st.zoneStart-st.n0)+st.eff.goodDeg)/om); } }
         else if (st.phase==='idle') startCheck();
         else if (st.phase==='resolved'&&t>=st.nextAt) startCheck();
-        if (cfg.stake && st.stakeTokens<MAXSTAKE && t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; }   // Stake Out banks on a clock, not on your hits
+        if (cfg.stake){ if(st.stakeTokens>=MAXSTAKE) st.stakeAt=t;   // a full bank used to leave the clock stale, so the first spend after 15s at the cap was refunded on the very next frame
+          else if (t-st.stakeAt>=STAKEMS){ st.stakeTokens++; st.stakeAt=t; } }   // Stake Out banks on a clock, not on your hits
       }
     }
     st.away=false;
@@ -427,7 +445,8 @@
   }
   // Browsers stop animation frames on a hidden tab, so the frame you come back on is minutes old:
   // the needle would jump clean past the zone and book a miss you never had. Drop the check instead.
-  function resync(t){ st.failAt=0; st.msAt=0; st.arc=null; st.stakeAt=t;
+  function resync(t,away){ st.failAt=0; st.msAt=0; st.arc=null;
+    if (away) st.stakeAt=t;   // you were not doing the action, so the bank was not filling. A hitch on a page you were watching is different, and used to cost you up to a full token
     if (st.phase==='active') startCheck(); else st.nextAt=t+cfg.gapMs; }
 
   // ---------- render ----------
@@ -438,7 +457,9 @@
     if (st.blank){   // both zones at 0%: an empty screen with no explanation reads as a broken app
       ring(cx,cy,R,T.ring,0,0);
       dctx.save(); dctx.fillStyle=C.warn; dctx.font='15px Segoe UI'; dctx.textAlign='center';
-      dctx.fillText('Great and Good are both 0%, so there is no zone to hit',cx,cy+R+34); dctx.restore();
+      dctx.fillText(chained()&&cfg.greatPct>0   // blaming the sliders contradicts the Great slider sitting right there at 3%
+        ? (cfg.merciless?'Merciless Storm':'No Quarter')+' removes the Great zone, and this baseline has no Good band'
+        : 'Great and Good are both 0%, so there is no zone to hit', cx,cy+R+34); dctx.restore();
       return;
     }
     if (st.phase==='active'||st.phase==='resolved'){
@@ -457,7 +478,7 @@
     }
     const A=st.arc;   // the error as a distance, drawn against the zone you were aiming at. From a snapshot, so a Merciless chain gets it too instead of being the one mode with no feedback
     if (A && A.wd>0 && (st.phase==='resolved' || now()-A.at<ARCMS)){
-      const idc=(A.gd>0?A.gd:A.wd)/2, tgt=A.zs+A.spin*idc;
+      const idc=idealDeg(A.gd,A.wd), tgt=A.zs+A.spin*idc;
       const end=tgt+clamp(A.hit-tgt,-140,140), rr=Ro+Math.max(4,5*k);
       dctx.save();
       if (st.phase==='active') dctx.globalAlpha=clamp((ARCMS-(now()-A.at))/250,0,1);   // it is sharing the dial with a live check now, so let it fade
@@ -547,11 +568,13 @@
     dctx.restore(); }
 
   // ---------- stats / meter ----------
+  const p90Of=list=>{ const a=list.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);   // a percentile, so one panic press cannot flatten the chart or swamp an average
+    // The largest sample is excluded once there is more than one. On a run of ten or fewer the plain 0.9
+    // index IS the panic press, so the bound it produced clipped nothing and the average was exactly what
+    // the clamp was added to resist. It also fixes the off-by-one wherever 0.9*n lands on a whole number.
+    return a.length?a[clamp(Math.floor(a.length*0.9),0,Math.max(0,a.length-2))]:0; };
   function meterSpan(){ const e=computeEff(), om=360/e.revMs;   // wide enough to show the window being trained AND the spread you actually produce
-    const win=(e.greatDeg>0?e.greatDeg:e.goodDeg)/2/om;
-    const a=recent.filter(r=>r.ms!=null).map(r=>Math.abs(r.ms)).sort((x,y)=>x-y);
-    const p90=a.length?a[Math.min(a.length-1,Math.floor(a.length*0.9))]:0;   // a percentile, so one panic press cannot flatten the chart
-    return clamp(Math.round(Math.max(win*1.25, p90*1.15)), 60, MSMAX); }     // the ceiling keeps the gridline loop below finite whatever a profile file claims
+    return clamp(Math.round(Math.max(idealDeg(e.greatDeg,e.goodDeg)/om*1.25, p90Of(recent)*1.15)), 60, MSMAX); }   // the ceiling keeps the gridline loop below finite whatever a profile file claims
   function weighted(){ const sp=meterSpan(); let ws=0,wg=0,we=0,wb=0,wn=0;
     recent.forEach((r,i)=>{ const w=i+1; ws+=w; if(r.kind==='great')wg+=w;
       if(r.ms!=null){ const m=clamp(r.ms,-sp,sp); we+=w*Math.abs(m); wb+=w*m; wn+=w; } });   // clamped: one panic press must not swamp the average
@@ -589,25 +612,25 @@
     drawMeter();
   }
   function resetSession(){ Object.assign(stats,{att:0,great:0,good:0,miss:0,streak:0,best:0}); recent.length=0; sess.length=0;
-    st.hyperStacks=0; st.stakeTokens=0; st.adapt=1; st.okRun=0; updateStats(); saveProfile(); }
+    st.hyperStacks=0; st.stakeTokens=0; st.stakeAt=now(); st.adapt=1; st.okRun=0; updateStats(); saveProfile(); }   // stakeAt with the tokens, or an empty bank fills again on the next frame instead of in 15s
 
   // ---------- end-of-session summary ----------
   function endSession(){
     if(st.running)toggleRun();
-    const n=sess.length, sp=meterSpan();
+    const n=sess.length, sp=clamp(Math.round(p90Of(sess)*1.15),60,MSMAX);   // the run's own spread. meterSpan() describes the last 60 checks overall, which can be a different preset entirely, so a tight recent stretch used to report every earlier error in this run as 60ms
     const cnt=k=>sess.filter(r=>r.kind===k).length, pct=c=>Math.round(c/n*100);
     const mean=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>clamp(r.ms,-sp,sp)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const mabs=a=>{ const v=a.filter(r=>r.ms!=null).map(r=>Math.abs(clamp(r.ms,-sp,sp))); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
     const half=Math.ceil(n/2), m=mean(sess), m1=mean(sess.slice(0,half)), m2=mean(sess.slice(half)), err=mabs(sess);
-    let run=0,best=0; sess.forEach(r=>{ const ok=r.kind==='great'||(chained()&&r.kind==='good');   // same rule the live streak uses
-      run=ok?run+1:0; if(run>best)best=run; });
+    let run=0,best=0; sess.forEach(r=>{ run=r.ok?run+1:0; if(run>best)best=run; });   // r.ok was decided when the check resolved, so toggling a perk mid-run cannot rewrite the streak afterwards
     const sgn=v=>v==null?'—':(Math.abs(v)<3?'on time':Math.round(Math.abs(v))+'ms '+(v>0?'late':'early'));
-    const e=computeEff(), conv=sess.filter(r=>r.conv).length;
+    const e=st.runEff||computeEff(), conv=sess.filter(r=>r.conv).length;   // the baseline this run started on: Hyperfocus and the staircase both move computeEff() mid-run, and adaptive already has its own row
     const key=st.runKey||baseKey(), prev=hist.filter(h=>h.key===key).pop();   // the last run on the same baseline and perks, so the comparison is like for like
     const rows=[['great',cnt('great')+' · '+pct(cnt('great'))+'%'],
                 ['good', cnt('good') +' · '+pct(cnt('good'))+'%'],
                 ['miss', cnt('miss') +' · '+pct(cnt('miss'))+'%'],
-                ['average error', sgn(m)],
+                ['average error', err==null?'—':'±'+Math.round(err)+'ms'],   // the same number the history row prints, so the two cannot disagree
+                ['bias', sgn(m)],                                        // equal and opposite errors are 'on time' here and still ±40ms above
                 ['drift', (m1==null||m2==null)?'—':(Math.abs(m2-m1)<4?'steady':sgn(m1)+' → '+sgn(m2))],
                 ['best streak', best]];
     if (cfg.stake)    rows.push(['greats from Stake Out', conv]);
@@ -617,7 +640,7 @@
     $('sum-rows').innerHTML=rows.map(r=>'<div class="sr"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');
     $('summary').classList.remove('hidden');
     hist.push({ t:Date.now(), key, name:st.runName||sessName(), n, great:cnt('great'), good:cnt('good'), miss:cnt('miss'), conv,
-                err:err==null?0:err, bias:m==null?0:m, best, adapt:cfg.adaptive?st.adapt:1 });
+                err, bias:m, best, adapt:cfg.adaptive?st.adapt:1 });   // err stays null when every check timed out: stored as 0 it read as perfect timing
     if (hist.length>HISTN) hist.shift();
     saveNow(); renderHistory();
   }
@@ -643,8 +666,9 @@
     $('h-more').textContent = n<=ROWS ? '' : n+' runs saved. The list shows the last '+ROWS+
       (n>BARS?', the chart the last '+BARS:'')+'.';
     $('hist-rows').innerHTML = hist.slice(-ROWS).reverse().map(h=>{ const d=new Date(h.t);
-      return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+'</span>'+
-             '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>±'+Math.round(h.err)+'ms · '+h.n+'</span></div>'; }).join('');
+      const zone = h.adapt&&Math.abs(h.adapt-1)>0.01 ? ' · '+Math.round(h.adapt*100)+'% zone' : '';   // the staircase level the run ended on, which the row has been storing and never showing
+      return '<div class="hr'+(h.key===key?' on':'')+'"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' '+esc(h.name)+zone+'</span>'+
+             '<b>'+Math.round(clamp(h.great/h.n,0,1)*100)+'% great</b><span>'+(h.err==null?'—':'±'+Math.round(h.err)+'ms')+' · '+h.n+'</span></div>'; }).join('');
     drawTrend(key);
   }
   function drawTrend(key){
@@ -689,7 +713,7 @@
       $('d-controls').open=true; cfg.openControls=true; } } }   // Controls & profile starts collapsed, and a warning nobody opens is the same silence this was added to end
   function saveProfile(){ if(!saveT) saveT=setTimeout(saveNow,400); }   // dragging a slider fires input continuously; one write per 400ms is plenty
   window.addEventListener('pagehide',saveNow);
-  document.addEventListener('visibilitychange',()=>{ if(document.hidden)saveNow(); });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden){ st.away=true; saveNow(); } });   // frame() cannot raise this itself: a hidden tab stops getting frames, so a hide shorter than STALLMS slipped through and booked a miss for a window that was never on screen
 
   // A history row is rebuilt rather than trusted wherever it comes from: an imported file is not ours, and
   // neither is the copy another tab wrote to the same key.
@@ -697,7 +721,8 @@
   const histRow=h=>(h&&typeof h==='object'&&cnt(h.n)>=1) ? {
       t:cnt(h.t)<=MAXDATE?cnt(h.t):0, key:String(h.key||'').slice(0,80), name:String(h.name||'custom').slice(0,24),   // bounded by what Date can represent, NOT by this clock: clamping to now() would relabel a run from a machine running ahead, and split its identity for the merge above
       n:cnt(h.n), great:cnt(h.great), good:cnt(h.good), miss:cnt(h.miss), conv:cnt(h.conv),
-      err:Math.abs(fin(h.err,0)), bias:fin(h.bias,0), best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
+      err:h.err==null?null:clamp(Math.abs(fin(h.err,0)),0,MSMAX), bias:h.bias==null?null:clamp(fin(h.bias,0),-MSMAX,MSMAX),
+      best:cnt(h.best), adapt:clamp(fin(h.adapt,1),ADAPTMIN,ADAPTMAX) } : null;
   // Two tabs are two authorities over one key and the last write wins, so a run finished in one of them used
   // to be erased by the other's next save, and hist is the only record a finished run has. Take the rows this
   // tab has never seen and leave the settings alone, so nothing moves under you mid-session; this tab's next
@@ -792,6 +817,7 @@
     if(cfg.injured && e.greatPct<=0)   out.push('This Is Not Happening only grows the Great zone, and this check has none.');
     if(cfg.stake && e.goodPct<=0)      out.push('Stake Out spends a token to turn a Good into a Great, and this check has no Good band.');
     if(chained() && cfg.hyper)         out.push('A chained check has no Great zone, so Hyperfocus banks tokens on Good here. That is a training choice, not the game.');
+    if(cfg.lullaby && chained())       out.push('A chain plays its warning sound once, at the first check, so this silences that one and nothing after it.');
     if(cfg.merciless && cfg.noquarter) out.push('Merciless Storm is a generator check and No Quarter a self-heal, so no check is ever under both. Leave on the one your baseline matches.');
     return out;
   }
@@ -855,7 +881,7 @@
   function toggleRun(){ try{actx();}catch(e){}
     st.running=!st.running; $('btn-start').textContent=st.running?'Stop':'Start'; $('btn-start').classList.toggle('primary',!st.running);
     if(st.running){ st.phase='idle'; st.hyperStacks=0; st.stakeTokens=0; st.stakeAt=now(); st.adapt=1; st.okRun=0;
-      st.runKey=baseKey(); st.runName=sessName();   // a run belongs to the setup it started on, not to whatever you switched to at check 40
+      st.runKey=baseKey(); st.runName=sessName(); st.runEff=computeEff();   // a run belongs to the setup it started on, not to whatever you switched to at check 40, and not to whatever the last check happened to leave in the Hyperfocus bank
       if(NARROW.matches) setMenu(false);            // on a phone the panel covers the dial, so Start would look like it did nothing
       sess.length=0; closeSummary(); updateStats(); saveProfile(); }   // every run starts from the same place: no tokens banked, baseline width
     else { st.phase='idle'; st.ox=centreX(); st.oy=VH/2; st.failAt=0; st.msAt=0; st.arc=null; updateStats(); } }   // Stop → back to the centred "Press to start" state, with no leftover feedback
